@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+
+<html lang="ja">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1, viewport-fit=cover" name="viewport"/>
+<title>推論エンジニアリング基礎 — レイテンシ・スループット・単位経済学の最適バランス</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&amp;display=swap&family=Noto+Sans+JP:wght@400;500;700" rel="stylesheet"/>
+<!-- 오픈그래프 및 서지 메타데이터 -->
+<meta content="推論エンジニアリング基礎 — 最適化と帳簿のトレードオフ" property="og:title"/>
+<meta content="NFL選手のような特化型サービング・インフラ設計: 共有API vs 専用GPUデプロイ、ドメイン・ファインチューニング、P99テールレイテンシ分析" property="og:description"/>
+<meta content="og_01.png" property="og:image"/>
+<meta content="推論エンジニアリング基礎 — レイテンシ・スループット・単位経済学の最適バランス" name="citation_title"/>
+<meta content="2026/10/25" name="citation_publication_date"/>
+<meta content="推論エンジニアリング基礎 — レイテンシ・スループット・単位経済学の最適バランス" name="dc.title"/>
+<meta content="ko" name="dc.language"/>
+<style>
+    :root {
+      --bg: #13141f; --panel: #1c1e2d; --panel2: #25283a; --rule: #363a52;
+      --text: #eceaf3; --muted: #9d9bb8;
+      --stain: #d672d6; --gfp: #5ee39c; --eye: #f0604d; --amber: #f1b646; --info: #82b8ff;
+      --c-doc: #b07cff; --c-asst: #ff86b8; --c-fly: #ef5b5b; --c-robo: #57d0dc;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: "Noto Sans JP", "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+      font-size: 16px; line-height: 1.6; word-break: keep-all; -webkit-font-smoothing: antialiased;
+    }
+    #prog { position: fixed; top: 0; left: 0; height: 3px; background: var(--gfp); width: 0%; z-index: 1000; }
+    nav.top {
+      position: sticky; top: 0; height: 54px; background: rgba(19, 20, 31, 0.88);
+      backdrop-filter: blur(8px); border-bottom: 1px solid var(--rule); display: flex;
+      align-items: center; padding: 0 1.5rem; gap: 1.2rem; overflow-x: auto; z-index: 900; white-space: nowrap;
+    }
+    nav.top .logo { font-weight: 700; color: var(--text); font-size: 0.95rem; }
+    nav.top a { color: var(--muted); text-decoration: none; font-size: 0.85rem; font-weight: 500; }
+    nav.top a:hover { color: var(--text); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 2.5rem 1.25rem; }
+    
+    /* 히어로 섹션 (bg_01.png 연동) */
+    header.hero {
+      position: relative; padding: 3.5rem 1.5rem;
+      background: linear-gradient(90deg, rgba(19,20,31,0.96) 0%, rgba(19,20,31,0.85) 45%, rgba(19,20,31,0.3) 100%),
+                  url('bg_01.png') no-repeat center right / cover;
+      border-bottom: 1px solid var(--rule); overflow: hidden;
+    }
+    .hero-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; background: rgba(241,182,70,0.15); color: var(--amber); font-size: 0.8rem; font-weight: 700; margin-bottom: 0.8rem; }
+    h1 { font-size: clamp(28px, 4.5vw, 46px); font-weight: 700; line-height: 1.25; margin-bottom: 0.8rem; }
+    p.lead { font-size: 1.15rem; color: var(--muted); max-width: 720px; margin-bottom: 1.5rem; }
+    
+    .hero-stage {
+      margin: 2rem 0 1.5rem 0; text-align: center; background: rgba(15,16,25,0.7);
+      border: 1px solid var(--rule); border-radius: 10px; padding: 1rem;
+    }
+    .hero-stage img { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 0 auto; }
+    .caption { font-size: 0.8rem; color: var(--muted); margin-top: 0.6rem; text-align: center; }
+
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin: 1.8rem 0; }
+    .kpi { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1rem; }
+    .kpi.g { border-left: 4px solid var(--gfp); } .kpi.m { border-left: 4px solid var(--stain); }
+    .kpi.r { border-left: 4px solid var(--eye); } .kpi.a { border-left: 4px solid var(--amber); }
+    .kpi .num { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+    .kpi .lbl { font-size: 0.8rem; color: var(--muted); margin-top: 0.2rem; }
+    
+    .dialog-hero { background: var(--panel2); border-left: 4px solid var(--c-doc); border-radius: 6px; padding: 1.2rem; margin-top: 1.5rem; }
+    .dialog-hero p { margin-bottom: 0.4rem; font-size: 0.95rem; }
+    .dialog-hero p:last-child { margin-bottom: 0; }
+    .dialog-hero b { display: inline-block; width: 100px; }
+
+    .cast { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1rem; margin: 2rem 0; }
+    .cast-card { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1rem; }
+    .cast-card h4 { font-size: 1rem; margin-bottom: 0.3rem; }
+    .cast-card p { font-size: 0.85rem; color: var(--muted); }
+
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+    .step-card { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1.2rem; }
+    .step-card span.idx { display: inline-block; width: 24px; height: 24px; background: var(--panel2); border-radius: 50%; text-align: center; line-height: 24px; font-size: 0.75rem; font-weight: 700; margin-bottom: 0.6rem; color: var(--gfp); }
+
+    .level { margin-bottom: 4rem; padding-top: 2rem; border-top: 1px solid var(--rule); }
+    .lvhead { margin-bottom: 1.5rem; }
+    .hexno { display: inline-block; width: 34px; height: 38px; background: var(--rule); clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); text-align: center; line-height: 38px; font-weight: 700; color: var(--gfp); margin-right: 0.6rem; vertical-align: middle; }
+    h2 { display: inline; font-size: clamp(22px, 3vw, 30px); vertical-align: middle; }
+    p.sub { margin-top: 0.5rem; font-size: 0.85rem; }
+    .lvtag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-right: 0.4rem; background: var(--panel2); color: var(--muted); }
+    .lvtag.g { color: var(--gfp); }
+
+    .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+    .pair > div { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1.2rem; }
+    .pair .tag { font-size: 0.8rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .pair .tag.fly { color: var(--eye); } .pair .tag.nn { color: var(--stain); }
+
+    .panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+    .cwrap { position: relative; width: 100%; background: #0f1019; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin-bottom: 1rem; }
+    canvas { display: block; width: 100%; }
+    .ctrl { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; background: var(--panel2); padding: 0.8rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
+    .ctrl .group { display: flex; align-items: center; gap: 0.6rem; }
+    .glabel { font-size: 0.8rem; color: var(--muted); }
+    button.bt { background: var(--rule); color: var(--text); border: none; padding: 0.45rem 0.9rem; border-radius: 4px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: 0.15s; }
+    button.bt:hover { background: #444966; }
+    button.bt.primary { background: var(--gfp); color: #000; font-weight: 700; }
+    button.bt.primary:hover { background: #4bd38e; }
+    .val { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text); font-size: 0.9rem; }
+    .insight { background: var(--panel2); border-left: 3px solid var(--amber); padding: 0.8rem 1rem; border-radius: 4px; font-size: 0.9rem; margin-top: 1rem; }
+    
+    .cut-block { margin: 1.5rem 0; background: #0f1019; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; text-align: center; padding: 0.8rem; }
+    .cut-block img { max-width: 100%; height: auto; border-radius: 4px; display: block; margin: 0 auto; }
+
+    .explain { background: rgba(241, 182, 70, 0.08); border: 1px solid rgba(241, 182, 70, 0.3); border-radius: 8px; padding: 1.2rem; margin: 1.2rem 0; }
+    .explain h4 { color: var(--amber); margin-bottom: 0.5rem; font-size: 0.95rem; }
+    .explain ol { padding-left: 1.2rem; font-size: 0.9rem; }
+    .explain ol li { margin-bottom: 0.3rem; }
+
+    .bridge { border-radius: 8px; padding: 1rem; margin: 1rem 0; font-size: 0.9rem; }
+    .bridge.field { background: rgba(240, 96, 77, 0.08); border: 1px solid rgba(240, 96, 77, 0.3); }
+    .bridge.gen { background: rgba(130, 184, 255, 0.08); border: 1px solid rgba(130, 184, 255, 0.3); }
+    .bridge b { display: block; margin-bottom: 0.2rem; }
+    .lim { font-size: 0.8rem; color: var(--muted); margin-top: 0.4rem; display: block; }
+
+    .say { display: flex; gap: 1rem; align-items: flex-start; background: var(--panel2); border-radius: 8px; padding: 1rem; margin: 1.2rem 0; }
+    .say img.who { width: 56px; height: 56px; border-radius: 6px; background: #000; flex-shrink: 0; object-fit: contain; }
+    .say[data-who="doc"] { border-left: 3px solid var(--c-doc); }
+    .say[data-who="asst"] { border-left: 3px solid var(--c-asst); }
+    .say[data-who="fly"] { border-left: 3px solid var(--c-fly); }
+    .say[data-who="robo"] { border-left: 3px solid var(--c-robo); }
+    .say .name { display: block; font-size: 0.8rem; margin-bottom: 0.2rem; }
+    .say[data-who="doc"] .name { color: var(--c-doc); }
+    .say[data-who="asst"] .name { color: var(--c-asst); }
+    .say[data-who="fly"] .name { color: var(--c-fly); }
+    .say[data-who="robo"] .name { color: var(--c-robo); }
+    .say p { font-size: 0.9rem; margin: 0; }
+
+    .quiz { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1.2rem; margin: 1.5rem 0; }
+    .quiz h4 { font-size: 0.95rem; color: var(--info); margin-bottom: 0.8rem; }
+    .quiz-q { margin-bottom: 1.2rem; }
+    .quiz-q p { font-size: 0.9rem; margin-bottom: 0.5rem; font-weight: 500; }
+    .quiz-opt { display: flex; flex-direction: column; gap: 0.4rem; }
+    .quiz-btn { background: var(--panel2); border: 1px solid var(--rule); color: var(--text); padding: 0.5rem 0.8rem; text-align: left; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+    .quiz-btn:hover { background: #32364e; }
+    .quiz-fb { font-size: 0.85rem; margin-top: 0.4rem; padding: 0.4rem 0.6rem; border-radius: 4px; display: none; }
+    .quiz-fb.ok { background: rgba(94, 227, 156, 0.15); color: var(--gfp); display: block; }
+    .quiz-fb.no { background: rgba(240, 96, 77, 0.15); color: var(--eye); display: block; }
+
+    /* 대결 섹션 */
+    .duel { background: linear-gradient(180deg, var(--panel2) 0%, var(--panel) 100%); border: 2px solid var(--rule); border-radius: 10px; padding: 2rem 1.5rem; margin: 3rem 0; }
+    .duel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; text-align: center; }
+    .duel-head h3 { font-size: 1.5rem; color: var(--amber); }
+    .duel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+    .duel-card { background: var(--bg); border: 1px solid var(--rule); border-radius: 8px; padding: 1.2rem; }
+    .duel-card.fly { border-top: 4px solid var(--c-fly); }
+    .duel-card.robo { border-top: 4px solid var(--c-robo); }
+    .bars { margin: 1.5rem 0; }
+    .bar-row { margin-bottom: 0.8rem; }
+    .bar-lbl { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.2rem; }
+    .bar-bg { height: 16px; background: var(--panel2); border-radius: 8px; overflow: hidden; }
+    .bar-fill { height: 100%; width: 0%; transition: width 0.6s ease; }
+    .verdict { background: rgba(176, 124, 255, 0.1); border-left: 4px solid var(--c-doc); padding: 1rem; border-radius: 4px; margin-top: 1rem; display: none; }
+    .open .verdict { display: block; }
+
+    /* 아웃트로 무대 (sc_01_outro.png 연동) */
+    .outro-stage {
+      margin: 2rem 0; background: #0f1019; border: 1px solid var(--rule); border-radius: 10px;
+      overflow: hidden; padding: 1rem; text-align: center;
+    }
+    .outro-stage img { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 0 auto; }
+
+    /* 색인 & 꾸러미 */
+    .kg-sec, .export-sec { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1.8rem; margin: 3rem 0; }
+    .filter-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 1rem 0; }
+    .chip { background: var(--panel2); border: 1px solid var(--rule); padding: 0.3rem 0.6rem; border-radius: 20px; font-size: 0.75rem; color: var(--muted); cursor: pointer; }
+    .chip.on { background: var(--rule); color: var(--text); font-weight: 700; }
+    .kg-search { width: 100%; padding: 0.6rem 0.8rem; background: var(--bg); border: 1px solid var(--rule); color: var(--text); border-radius: 4px; margin-bottom: 1rem; }
+    .kg-list { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; }
+    .kg-item { background: var(--panel2); padding: 0.6rem 0.8rem; border-radius: 4px; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; }
+    .export-btns { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.2rem; }
+    
+    #tip { position: fixed; background: #2d3148; border: 1px solid var(--amber); color: var(--text); padding: 0.5rem 0.8rem; border-radius: 6px; font-size: 0.8rem; max-width: 260px; pointer-events: none; z-index: 2000; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    .jt { border-bottom: 1px dashed var(--amber); cursor: help; color: inherit; }
+    footer { border-top: 1px solid var(--rule); padding: 3rem 1.5rem; color: var(--muted); font-size: 0.85rem; }
+    .ref-tb { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    .ref-tb th, .ref-tb td { border: 1px solid var(--rule); padding: 0.6rem; text-align: left; }
+    .ref-tb th { background: var(--panel2); color: var(--text); }
+    @media(max-width: 760px) {
+      .pair, .duel-grid { grid-template-columns: 1fr; }
+      nav.top { padding: 0 1rem; }
+      .wrap { padding: 1.5rem 1rem; }
+    }
+  </style>
+<style>*{word-break:normal!important;line-break:strict}</style>
+  <link rel="alternate" hreflang="ko" href="01_inference_prerequisites.html">
+  <link rel="alternate" hreflang="en" href="01_inference_prerequisites.en.html">
+  <link rel="alternate" hreflang="zh-CN" href="01_inference_prerequisites.zh.html">
+  <link rel="alternate" hreflang="ja" href="01_inference_prerequisites.ja.html">
+  <link rel="alternate" hreflang="uz" href="01_inference_prerequisites.uz.html">
+  <link rel="alternate" hreflang="ru" href="01_inference_prerequisites.ru.html">
+  <link rel="alternate" hreflang="vi" href="01_inference_prerequisites.vi.html">
+  <link rel="alternate" hreflang="x-default" href="01_inference_prerequisites.html">
+<script>
+(function(){
+var LANGS=[["ko","한국어"],["en","English"],["zh","中文"],["ja","日本語"],["uz","Oʻzbekcha"],["ru","Русский"],["vi","Tiếng Việt"]];
+var CUR="ja",BASE="01_inference_prerequisites",KEY="lab_explainer_lang";
+function fname(l){return l==="ko"?BASE+".html":BASE+"."+l+".html";}
+function save(l){try{localStorage.setItem(KEY,l);}catch(e){}}
+var qs=new URLSearchParams(location.search).get("lang");
+if(qs&&qs!==CUR){for(var i=0;i<LANGS.length;i++){if(LANGS[i][0]===qs){save(qs);location.replace(fname(qs)+location.hash);break;}}}
+var isFile=/^file:/.test(location.protocol);
+if(CUR==="ko"&&!location.search){
+var want=null;
+try{want=localStorage.getItem(KEY);}catch(e){}
+if(!want&&!isFile){var ls=navigator.languages||[];for(var j=0;j<ls.length;j++){var c=String(ls[j]).slice(0,2).toLowerCase();if(["en","zh","ja","uz","ru","vi"].indexOf(c)>=0){want=c;break;}if(c==="ko"){break;}}}
+if(want&&want!=="ko"){
+var t=fname(want)+(location.hash||"");
+document.documentElement.style.visibility="hidden";
+var shown=false;function show(){if(!shown){shown=true;document.documentElement.style.visibility="";}}
+setTimeout(show,2500);
+if(isFile){show();location.replace(t);}
+else{fetch(t,{method:"HEAD"}).then(function(r){if(r.ok){location.replace(t);}show();})["catch"](function(){show();});}
+}}
+function buildUI(){
+var sel=document.createElement("select");
+sel.setAttribute("aria-label","Language");
+sel.style.cssText="background:#25283a;color:#eceaf3;border:1px solid #363a52;border-radius:4px;font:inherit;font-size:0.8rem;padding:0.2rem 0.4rem;cursor:pointer;max-width:110px;";
+for(var i=0;i<LANGS.length;i++){var o=document.createElement("option");o.value=LANGS[i][0];o.textContent=LANGS[i][1];if(LANGS[i][0]===CUR){o.selected=true;}sel.appendChild(o);}
+sel.addEventListener("change",function(){save(sel.value);location.href=fname(sel.value)+(location.hash||"");});
+var slot=document.getElementById("langslot");
+if(slot){slot.appendChild(sel);}else{var logo=document.querySelector("nav.top .logo");if(logo&&logo.parentNode){logo.parentNode.insertBefore(sel,logo.nextSibling);}}
+var wrap=document.createElement("div");wrap.className="langbanner";
+wrap.style.cssText="position:fixed;right:14px;bottom:14px;z-index:3000;display:flex;flex-direction:column;align-items:flex-end;";
+var names={en:"English",zh:"中文",ja:"日本語",uz:"Oʻzbekcha",ru:"Русский",vi:"Tiếng Việt"};
+var btn=document.createElement("button");btn.textContent="🌐 "+(CUR==="ko"?"한국어":names[CUR]);
+btn.style.cssText="border-radius:999px;border:1px solid #363a52;background:rgba(28,30,45,0.92);color:#eceaf3;padding:0.5rem 0.9rem;font-size:0.85rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.5);font-family:inherit;";
+btn.setAttribute("aria-haspopup","true");btn.setAttribute("aria-expanded","false");
+var list=document.createElement("div");list.style.cssText="display:none;flex-direction:column;background:rgba(28,30,45,0.97);border:1px solid #363a52;border-radius:10px;padding:0.4rem;margin-bottom:6px;";
+for(var k=0;k<LANGS.length;k++){(function(p){var b=document.createElement("button");b.textContent=p[1];b.style.cssText="background:none;border:none;cursor:pointer;padding:0.3rem 0.7rem;border-radius:6px;font-size:0.85rem;font-family:inherit;"+(p[0]===CUR?"color:#f1b646;font-weight:700;":"color:#eceaf3;");b.addEventListener("click",function(){list.style.display="none";save(p[0]);location.href=fname(p[0])+(location.hash||"");});list.appendChild(b);})(LANGS[k]);}
+btn.addEventListener("click",function(e){e.stopPropagation();var open=list.style.display==="none";list.style.display=open?"flex":"none";btn.setAttribute("aria-expanded",open?"true":"false");});
+document.addEventListener("click",function(e){if(!wrap.contains(e.target)){list.style.display="none";}});
+document.addEventListener("keydown",function(e){if(e.key==="Escape"){list.style.display="none";}});
+wrap.appendChild(list);wrap.appendChild(btn);document.body.appendChild(wrap);
+var st=document.createElement("style");st.textContent="@media print{.langbanner{display:none!important}}";
+document.head.appendChild(st);
+}
+if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",buildUI);}else{buildUI();}
+})();
+</script>
+</head>
+<body>
+<div id="prog"></div>
+<div id="tip"></div>
+<nav class="top"> <span class="logo">⚡ AI Lab Explainer</span> <a href="#overview">全体像</a> <a href="#lv1">1.共有 vs 専用</a> <a href="#lv2">2.ドメイン特化</a> <a href="#lv3">3.レイテンシ vs スループット</a> <a href="#duel">決着戦</a> <a href="#outro">まとめと決算</a> <a href="#kg">知識インデックス</a> <a href="#export">知識パッケージ</a></nav>
+<!-- 히어로 섹션 (F판 bg_01.png 배경 연동) -->
+<header class="hero" data-img="bg_01">
+<div class="wrap">
+<span class="hero-badge">教科書第1章 · 推論エンジニアリングの前提条件</span>
+<h1>最適化の本当の意味は<br/>「最大化」ではなく「バランス」である</h1>
+<p class="lead">NFLの選手は、相撲力士ほど重くなく、短距離ランナーほど速くなく、重量挙げ選手のように力だけを鍛えてもいない。一つのポジションでシーズンを全うする最適なバランスを見つけるように、AIサービスのインフラもレイテンシ・スループット・単位経済学の絶妙なバランスポイントを見つけなければならない。</p>
+<!-- 히어로 무대 일러스트 (E판 sc_01_hero.png 연동) -->
+<div class="hero-stage">
+<img alt="推論サービングの最適バランスを巡って議論する4人の研究者キャラクター" data-img="sc_01_hero" src="sc_01_hero.png"/>
+<p class="caption">実験室の管制コンソールで帳簿と指標の最適バランスを測定する4人のキャラクター</p>
+</div>
+<div class="kpis">
+<div class="kpi g"><div class="num">1,200万</div><div class="lbl">損益分岐 tokens/日（共有 vs 専用）</div></div>
+<div class="kpi m"><div class="num">TTFT vs TPS</div><div class="lbl">計算バウンド vs メモリバウンド</div></div>
+<div class="kpi r"><div class="num">P99 テールレイテンシ</div><div class="lbl">実際のユーザー体感は右に偏る</div></div>
+<div class="kpi a"><div class="num">数十B ➔ 3B</div><div class="lbl">ドメイン・ファインチューニングによるモデル小型化</div></div>
+</div>
+<div class="dialog-hero">
+<p><b style="color:var(--c-doc)">博士：</b>「世界最大のモデルを買って最速で回すのは研究ではなく金の無駄遣いです。制約条件を狭めるほど勝ちます!」</p>
+<p><b style="color:var(--c-asst)">助手：</b>「教科書第1章の原文の統計と数式モデルに従って、帳簿とレイテンシをリアルタイム・シミュレータにセットしました。」</p>
+<p><b style="color:var(--c-fly)">ハエ：</b>「ワシは1ミリグラムの脳でもリアルタイムで飛び回る。単純なSQL生成に671Bの恐竜モデルを呼ぶバカは誰だ?」</p>
+<p><b style="color:var(--c-robo)">Money-Robo：</b>「資本主義では速度こそ金貨だ! 共有APIで即始めて、GPUをフル回転させなければ金は稼げない!」</p>
+</div>
+</div>
+</header>
+<main class="wrap">
+<!-- 등장인물 카드 -->
+<section class="cast">
+<div class="cast-card">
+<h4 style="color:var(--c-doc)">博士（チビ科学者）</h4>
+<p>理論とシステム評価を統括。データと指標に基づき厳格にバランスポイントを判定します。</p>
+</div>
+<div class="cast-card">
+<h4 style="color:var(--c-asst)">助手（Assistant）</h4>
+<p>実際のベンチマーク計測と帳簿記録を担当。シードを固定し、誤差のない測定値を報告します。</p>
+</div>
+<div class="cast-card">
+<h4 style="color:var(--c-fly)">ショウジョウバエ研究員</h4>
+<p>コストパフォーマンスと極端な軽量化を追求。フロンティア万能主義を疑い、特化型の小型モデルを好みます。</p>
+</div>
+<div class="cast-card">
+<h4 style="color:var(--c-robo)">Money-Robo</h4>
+<p>数字と利益、スケーリング信仰の持ち主。巨大モデルの圧倒的パワーと市場先行を信じます。</p>
+</div>
+</section>
+<!-- 큰 그림 -->
+<section id="overview" style="margin-bottom:3rem;">
+<h3 style="font-size:1.3rem; margin-bottom:1rem;">推論エンジニアリングの3大決定柱</h3>
+<div class="steps">
+<div class="step-card">
+<span class="idx">1</span>
+<h4>スケール &amp; デプロイ方式</h4>
+<p style="font-size:0.85rem; color:var(--muted)">トークン単位で支払う<span class="jt" data-term="共有推論">共有推論</span>から、時間単位でGPUを借りる<span class="jt" data-term="専用デプロイ">専用デプロイ</span>への転換基準点を決めます。</p>
+</div>
+<div class="step-card">
+<span class="idx">2</span>
+<h4>モデル選択 &amp; ドメイン特化</h4>
+<p style="font-size:0.85rem; color:var(--muted)">汎用の超巨大モデルの代わりに、ファインチューニングと<span class="jt" data-term="蒸留">蒸留</span>を通じて最も小さく扱いやすいモデルを確定します。</p>
+</div>
+<div class="step-card">
+<span class="idx">3</span>
+<h4>レイテンシ vs スループット</h4>
+<p style="font-size:0.85rem; color:var(--muted)">対話型オンラインサービング（<span class="jt" data-term="TTFT">TTFT</span>、TPS）とオフラインの一括バッチ処理のハードウェア・トレードオフを調整します。</p>
+</div>
+</div>
+</section>
+<!-- 사다리 1칸 -->
+<section class="level" id="lv1">
+<div class="lvhead">
+<div class="hexno">1</div>
+<h2>共有推論 vs 専用デプロイの損益分岐点</h2>
+<p class="sub"><span class="lvtag g">モデル: Cost = min(Tokens × Rate, GPU_Hours × Wage)</span><span class="lvtag">帳簿で見ると: 個配達の宅配便 vs 月極貨物トラック</span></p>
+</div>
+<div class="pair">
+<div>
+<div class="tag fly">帳簿で見ると（コストのトレードオフ）</div>
+<p>創業初期で注文量が少ないうちは、1個3,000ウォンの外注宅配を使う方が得です。しかし1日の発送量が数万件に増えれば、月極でトラックを契約しドライバーを雇う専用配車がはるかに安くなります。</p>
+</div>
+<div>
+<div class="tag nn">ニューラルネット・インフラでは</div>
+<p>初期はトークン単位課金のパブリックAPI（Shared Endpoint）がオーバーヘッドゼロで安全です。しかしトラフィックが大きくなると、GPUインスタンスを直接借りて載せる専用サービングがトークン単価を1/5以下に下げます。</p>
+</div>
+</div>
+<!-- 본문 삽화 컷 (G판 cut_01_tradeoff.png 연동) -->
+<div class="cut-block">
+<img alt="共有APIと専用GPUデプロイのコスト分かれ道を描いたイラスト" data-img="cut_01_tradeoff" src="cut_01_tradeoff.png"/>
+<p class="caption">デプロイ方式の決定カット: トークン単位課金API vs 時間単位専用GPUの単位経済学の分かれ道</p>
+</div>
+<section class="panel">
+<div class="cwrap"><canvas aria-label="共有 vs 専用コスト比較グラフ" height="260" id="c1"></canvas></div>
+<div class="ctrl">
+<div class="group"> <span class="glabel">1日のトークン量:</span> <input id="c1Tokens" max="50" min="1" step="1" type="range" value="15"/> <span class="val" id="c1TokensVal">15M トークン/日</span></div>
+<div class="group"> <span class="glabel">専用GPU構成:</span> <span class="val">A10G × 2枚（$2.5/時）</span> </div>
+</div>
+<div class="insight" id="ins1"> 現在のトラフィックでは、<b>専用デプロイ</b>が共有APIより月約<b>$420</b>節約になります。損益分岐点を突破しました! </div>
+</section>
+<div class="explain">
+<h4>初心者のための帳簿計算法</h4>
+<ol>
+<li><b>共有推論の利点:</b> コールドスタートなし、使った分だけ支払い、初期エンジニアリング資源の節約。</li>
+<li><b>共有推論の限界:</b> 使用量とコストが1:1で線形に膨張し、隣人ノイズ（Noisy Neighbors）のせいでレイテンシ保証が不可能。</li>
+<li><b>専用へ転換する3大理由:</b> 規模（Scale）、特化モデル運用（Specialization）、複合モデルパイプライン（Orchestration）。</li>
+</ol>
+</div>
+<div class="bridge field"> <b>現場に移すと</b> 素のプロトタイプ段階で無理に自前のvLLMクラスタを組むと、遊休GPUのコストで月に数百万ウォンが浪費されます。PMF（プロダクト・マーケット・フィット）達成までは商用APIで機動力を確保してください。 <span class="lim">比喩の限界: 専用GPUはサーバーのダウンタイムとデプロイ保守の人件費が追加で発生します。</span></div>
+<div class="say" data-who="fly">
+<img alt="" aria-hidden="true" class="who" data-img="fly_point" data-mood="point" data-who="fly" src="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 16 16'&gt;&lt;rect width='16' height='16' fill='%231d1a22'/&gt;&lt;rect x='4' y='4' width='8' height='8' fill='%23ef5b5b'/&gt;&lt;/svg&gt;"/>
+<div><b class="name">ショウジョウバエ研究員</b><p>1日1,000万トークンも出ていないのにGPU4枚を訳もなく予約するのは、投資詐欺と同じだ!</p></div>
+</div>
+<div class="quiz" data-quiz="lv1">
+<h4>確認クイズ（1段目）</h4>
+<div class="quiz-q" data-ans="1">
+<p>Q1. スタートアップが初期段階で共有推論（Shared Inference API）を優先する主な理由は?</p>
+<div class="quiz-opt">
+<button class="quiz-btn" onclick="checkQ(this, 0)">A. 自前のファインチューニングモデルを最も簡単にサービングできるから</button>
+<button class="quiz-btn" onclick="checkQ(this, 1)">B. エンジニアリング・オーバーヘッドがなく、使用量に比例してだけ課金されるから</button>
+<button class="quiz-btn" onclick="checkQ(this, 2)">C. サービスのP99レイテンシを完全に保証できるから</button>
+</div>
+<div class="quiz-fb"></div>
+</div>
+</div>
+</section>
+<!-- 사다리 2칸 -->
+<section class="level" id="lv2">
+<div class="lvhead">
+<div class="hexno">2</div>
+<h2>ドメイン特化: ファインチューニングと知識蒸留</h2>
+<p class="sub"><span class="lvtag g">戦略: 671B汎用 ➔ 3B特化型の軽量化</span><span class="lvtag">帳簿で見ると: 万能な博士より専属通訳</span></p>
+</div>
+<div class="pair">
+<div>
+<div class="tag fly">帳簿で見ると</div>
+<p>あらゆる言語・人文学・コーディングを知り尽くした超高給の首席学者に、社内SQLクエリ作成だけをさせるのは深刻な人件費の漏出です。基本の語学力しかないジュニアに社内DBスキーマだけを集中的に訓練する方が、圧倒的に速くて安い。</p>
+</div>
+<div>
+<div class="tag nn">ニューラルネット・インフラでは</div>
+<p>数兆パラメータのフロンティアモデルは、推論コストとメモリ帯域を過剰に消費します。Text-to-SQLのような閉じたドメインでは、3Bの小型モデルをファインチューニングするか、大型教師モデルから蒸留（Distillation）して同等の精度を得ます。</p>
+</div>
+</div>
+<section class="panel">
+<div class="cwrap"><canvas aria-label="モデルサイズ別の推論コストと精度の比較" height="240" id="c2"></canvas></div>
+<div class="ctrl">
+<div class="group">
+<button class="bt primary" id="btnBench">📊 ドメインSQLベンチマークを実行</button>
+</div>
+<div class="group"> <span class="glabel">テストデータ:</span> <span class="val">実際のビジネス質問500件</span> </div>
+</div>
+<div class="insight" id="ins2"> <b>テスト完了:</b> 3Bファインチューニング済みモデルは、671Bフロンティアモデル比97.4%の精度を保ちながら、推論コストを<b>92%削減</b>しました! </div>
+</section>
+<div class="explain">
+<h4>ファインチューニング vs 知識蒸留（Distillation）の核心的な違い</h4>
+<ol>
+<li><b>ファインチューニング:</b> モデルのアーキテクチャと重みの数は維持したまま、ドメイン・データセットで特定ドメインの正解重みへ更新する。</li>
+<li><b>蒸留（Distillation）:</b> 大型教師（Teacher）モデルの内部確率分布（Logits）そのものを小型の生徒（Student）モデルに教え、行動様式を伝授する。</li>
+<li><b>グッドハートの法則（Goodhart's Law）:</b> MMLUのような汎用ベンチマークの点数に囚われず、サービスの実際のタスクに基づく独自のEvalsを作るべき。</li>
+</ol>
+</div>
+<div class="bridge gen"> <b>生成AIで言えば</b> DeepSeek-R1（671B）の公開直後、Llama-3 8Bベースで蒸留されたオープンモデルがオープンソース・エコシステムで爆発的な人気を得ました。小さすぎて単一GPUでも飛び回れるからです。 <span class="lim">比喩の限界: 蒸留されたモデルは教師モデルの偏見や誤答パターンまでそのまま吸収する恐れがあります。</span></div>
+<div class="say" data-who="robo">
+<img alt="" aria-hidden="true" class="who" data-img="robo_coin" data-mood="coin" data-who="robo" src="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 16 16'&gt;&lt;rect width='16' height='16' fill='%231d1a22'/&gt;&lt;rect x='4' y='4' width='8' height='8' fill='%2357d0dc'/&gt;&lt;/svg&gt;"/>
+<div><b class="name">Money-Robo</b><p>それでも671Bモデルが吐き出す数千億トークンの雄大さを見ると、投資家の血が騒がないか? 巨大さこそ力だ!</p></div>
+</div>
+<div class="quiz" data-quiz="lv2">
+<h4>確認クイズ（2段目）</h4>
+<div class="quiz-q" data-ans="2">
+<p>Q2. 知識蒸留（Distillation）が普通の合成データ学習と決定的に違う点は?</p>
+<div class="quiz-opt">
+<button class="quiz-btn" onclick="checkQ(this, 0)">A. パラメータ数が教師モデルより大きくなる</button>
+<button class="quiz-btn" onclick="checkQ(this, 1)">B. 訓練速度が常に100倍以上速い</button>
+<button class="quiz-btn" onclick="checkQ(this, 2)">C. 最終回答だけでなく、教師モデルの実際の確率分布そのものを模倣するよう学習する</button>
+</div>
+<div class="quiz-fb"></div>
+</div>
+</div>
+</section>
+<!-- 사다리 3칸 -->
+<section class="level" id="lv3">
+<div class="lvhead">
+<div class="hexno">3</div>
+<h2>レイテンシ vs スループット、そしてテールレイテンシ（P99）</h2>
+<p class="sub"><span class="lvtag g">指標: TTFT、TPS、P50、P99</span><span class="lvtag">帳簿で見ると: 急行の個人窓口 vs 深夜の大量決済バッチ</span></p>
+</div>
+<div class="pair">
+<div>
+<div class="tag fly">帳簿で見ると</div>
+<p>銀行の窓口で一人のVIP客に職員が即座に応答するのが「レイテンシ最適化」、夜間に電算室で数百万件の送金記録を束にして一括清算するのが「スループット最適化」です。設計哲学がまったく異なります。</p>
+</div>
+<div>
+<div class="tag nn">ニューラルネット・インフラでは</div>
+<p>チャットボットは最初のトークンが出るまでの時間（<span class="jt" data-term="TTFT">TTFT</span>）と1秒あたりのトークン数（<span class="jt" data-term="TPS">TPS</span>）が命です。一方、ポッドキャストの文字起こしや文書埋め込みのようなオフライン作業は、個々の遅延を犠牲にしてバッチサイズを極大化し、GPU当たりのスループットを最大化します。</p>
+</div>
+</div>
+<section class="panel">
+<div class="cwrap"><canvas aria-label="レイテンシとP99テール分布のシミュレーション" height="260" id="c3"></canvas></div>
+<div class="ctrl">
+<div class="group"> <span class="glabel">同時接続者数:</span> <input id="c3Conc" max="64" min="1" step="1" type="range" value="16"/> <span class="val" id="c3ConcVal">16人</span> </div>
+<div class="group">
+<span class="glabel">サービングモード:</span>
+<button class="bt primary" id="btnModeToggle">オンラインストリーミング（レイテンシ優先）</button>
+</div>
+</div>
+<div class="insight" id="ins3"> <b>レイテンシ指標の分析:</b> 中央値（P50）は快適な<b>180ms</b>ですが、キューの滞留で<b>P99テールレイテンシは1,240ms</b>まで跳ね上がりました。100人に1人はサービス障害を疑います! </div>
+</section>
+<div class="explain">
+<h4>テールレイテンシ（右に裾の長い分布）を見るべき理由</h4>
+<ol>
+<li><b>平均の罠:</b> LLMの応答時間は正規分布ではなく右に長い裾を持ちます。平均値だけ見ると、外れ値（Outlier）の苦しみが隠れます。</li>
+<li><b>P90 / P99管理:</b> 10回に1回、100回に1回起こるボトルネック遅延がユーザーの信頼を崩します。</li>
+<li><b>TTFTとTPSの分離:</b> TTFTはプロンプトを一気に読む計算バウンド（Prefill）、TPSは重みをメモリから読み続けるメモリ帯域バウンド（Decode）です。</li>
+</ol>
+</div>
+<!-- 조수 장부 발표 스프라이트 (B판 asst_ledger.png 연동) -->
+<div class="say" data-who="asst">
+<img alt="帳簿を持つ助手" aria-hidden="true" class="who" data-img="asst_ledger" data-mood="ledger" data-who="asst" src="asst_ledger.png"/>
+<div><b class="name">助手</b><p>帳簿を確認すると、バッチサイズを1から32に上げると総トークン生産量は4.2倍になりますが、個人の体感レイテンシは3倍遅くなります。用途別にサーバーを分けるべきです!</p></div>
+</div>
+<div class="quiz" data-quiz="lv3">
+<h4>確認クイズ（3段目）</h4>
+<div class="quiz-q" data-ans="1">
+<p>Q3. 対話型LLMチャットサービスで、ストリーミングの最初の文字が表示される速さを支配する段階と指標は?</p>
+<div class="quiz-opt">
+<button class="quiz-btn" onclick="checkQ(this, 0)">A. デコード（Decode）段階のTPS</button>
+<button class="quiz-btn" onclick="checkQ(this, 1)">B. プリフィル（Prefill）段階のTTFT（Time to First Token）</button>
+<button class="quiz-btn" onclick="checkQ(this, 2)">C. バッチチャンクサイズのメモリスワッピング速度</button>
+</div>
+<div class="quiz-fb"></div>
+</div>
+</div>
+</section>
+<!-- 끝장 대결 -->
+<section class="duel" id="duel">
+<div class="duel-head">
+<div style="text-align:left;">
+<h4 style="color:var(--c-fly); margin-top:0.3rem;">ショウジョウバエ研究員</h4>
+<span style="font-size:0.8rem; color:var(--muted)">特化型3Bファインチューニング専用サーバー</span>
+</div>
+<div>
+<h3>VS</h3>
+<p style="font-size:0.85rem; color:var(--muted)">1日2,000万トークンのB2B SQL生成サービス</p>
+</div>
+<div style="text-align:right;"> <h4 style="color:var(--c-robo); margin-top:0.3rem;">Money-Robo</h4> <span style="font-size:0.8rem; color:var(--muted)">671B超大型フロンティア商用API</span> </div>
+</div>
+<div class="duel-grid">
+<div class="duel-card fly">
+<b style="color:var(--c-fly)">ハエの勝負手:</b>
+<p style="font-size:0.85rem; margin-top:0.4rem;">「SQL生成ドメインは閉じている。3Bモデルを精密にファインチューニングし、専用L4 GPU2枚に載せれば、月$780で毎秒数十件をリアルタイム（TTFT 80ms）で片付ける!」</p>
+</div>
+<div class="duel-card robo">
+<b style="color:var(--c-robo)">Money-Roboの勝負手:</b>
+<p style="font-size:0.85rem; margin-top:0.4rem;">「知性はパラメータから生まれる! 671BフロンティアAPIこそ完璧なクエリを保証し、顧客を逃がさない! トークン単位課金なんてスケールで押し通す!」</p>
+</div>
+</div>
+<div style="text-align:center;">
+<button class="bt primary reveal" id="btnDuelRun" style="font-size:1rem; padding:0.6rem 2rem;">⚡ 対決結果のシミュレーション計算</button>
+</div>
+<div class="bars" id="duelBars" style="display:none; margin-top:1.5rem;">
+<div class="bar-row">
+<div class="bar-lbl"><span>月間インフラ支出帳簿（低いほど優秀）</span><span id="costFlyVal" style="color:var(--c-fly); font-weight:700;">$780 / 月</span></div>
+<div class="bar-bg"><div class="bar-fill" id="barFly" style="background:var(--c-fly); width:20%;"></div></div>
+</div>
+<div class="bar-row">
+<div class="bar-lbl"><span>Money-Robo API累積請求額</span><span id="costRoboVal" style="color:var(--c-robo); font-weight:700;">$3,600 / 月</span></div>
+<div class="bar-bg"><div class="bar-fill" id="barRobo" style="background:var(--c-robo); width:95%;"></div></div>
+</div>
+</div>
+<div class="say asst" id="duelAsst" style="margin-top:1rem; display:none;">
+<img alt="" aria-hidden="true" class="who" data-img="asst_ledger" src="asst_ledger.png"/>
+<div><b class="name">助手</b><p>検証結果、SQLベンチマークの精度は98.2%対98.6%で互角でしたが、月支出はハエ側が$780、Money-Robo側が$3,600で、ハエの圧勝です!</p></div>
+</div>
+<div class="verdict" id="duelVerdict">
+<b style="color:var(--c-doc)">博士の最終判定:</b>
+<p style="font-size:0.95rem; margin-top:0.3rem;">ドメイン範囲が明確なのに巨大モデルを盲信するのは資源の浪費だ。制約条件を狭め、コストとレイテンシを両方制圧した。<b>ハエの勝ち!</b></p>
+</div>
+</section>
+<!-- 정리 및 아웃트로 (E판 sc_01_outro.png 연동) -->
+<section id="outro" style="margin: 3rem 0;">
+<h3 style="font-size:1.3rem; margin-bottom:1rem;">ひと目で見る教科書第1章のまとめ</h3>
+<table style="width:100%; border-collapse:collapse; font-size:0.85rem; margin-bottom:1.5rem;">
+<thead>
+<tr style="background:var(--panel2); border-bottom:2px solid var(--rule);">
+<th style="padding:0.6rem; text-align:left;">区分</th>
+<th style="padding:0.6rem; text-align:left;">共有推論（共有API）</th>
+<th style="padding:0.6rem; text-align:left;">専用デプロイ（専用GPU）</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid var(--rule);">
+<td style="padding:0.6rem; font-weight:700;">コスト構造</td>
+<td style="padding:0.6rem;">消費量（トークン）に比例して線形増加</td>
+<td style="padding:0.6rem;">GPU時間単位の固定賃借料が底値を形成</td>
+</tr>
+<tr style="border-bottom:1px solid var(--rule);">
+<td style="padding:0.6rem; font-weight:700;">エンジニアリング工数</td>
+<td style="padding:0.6rem;">APIキー1つで即連携（ゼロ）</td>
+<td style="padding:0.6rem;">サービング・ランタイムとオーケストレーションが必須</td>
+</tr>
+<tr style="border-bottom:1px solid var(--rule);">
+<td style="padding:0.6rem; font-weight:700;">レイテンシ制御</td>
+<td style="padding:0.6rem;">制御不可（提供者負荷とNoisy Neighbors）</td>
+<td style="padding:0.6rem;">量子化・バッチ・KVキャッシュ最適化を直接制御</td>
+</tr>
+</tbody>
+</table>
+<!-- 아웃트로 결산 일러스트 무대 -->
+<div class="outro-stage">
+<img alt="対決後の最終決算を行う実験室アウトロの場面" data-img="sc_01_outro" src="sc_01_outro.png"/>
+<p class="caption">アウトロの舞台: 勝利したショウジョウバエ研究員と、「損切り!」を叫びながら次の投資を狙うMoney-Robo</p>
+</div>
+<div class="dialog-hero" style="border-left-color:var(--amber);">
+<p><b style="color:var(--c-doc)">博士：</b>「最適化は一つを最後まで育てることではなく、わがサービスの制約の中で損益を合わせるエンジニアリングの芸術です。」</p>
+<p><b style="color:var(--c-fly)">ハエ：</b>「ほら、ワシの言った通りだ。『大きなモデル』だけ叫んでいたロボット財布が完璧に剥がされた!」</p>
+<p><b style="color:var(--c-robo)">Money-Robo：</b>「くっ…損切りを認める! だがマルチパーパス・エージェントの回では、巨大モデルの圧倒的汎用性でリベンジしてみせる!」</p>
+<p><b style="color:var(--c-asst)">助手：</b>「どちらも大事なバランスです。下の知識インデックスと知識パッケージで、今日整理した概念と文献データを確認してください。」</p>
+</div>
+</section>
+<!-- O1 지식 색인 -->
+<section class="kg-sec" id="kg">
+<h3>知識インデックス — このページで調べる</h3>
+<p style="font-size:0.85rem; color:var(--muted); margin-bottom:1rem;">教科書第1章で確立された概念・アーキテクチャ手法・指標のつながりの網です。</p>
+<input class="kg-search" id="kgSearch" placeholder="概念を検索（例: レイテンシ、共有推論、蒸留、TTFT、P99）…" type="text"/>
+<div class="filter-chips"> <span class="chip on" data-type="all">全件表示</span> <span class="chip" data-type="Method">方法（Method）</span> <span class="chip" data-type="Concept">概念（Concept）</span> <span class="chip" data-type="Metric">指標（Metric）</span> <span class="chip" data-type="Claim">検証済み事実（Claim）</span> </div>
+<div class="kg-list" id="kgList"></div>
+</section>
+<!-- O2 온톨로지·서지 꾸러미 -->
+<section class="export-sec" id="export">
+<h3>オントロジー・文献パッケージ — このページの知識を持ち帰る</h3>
+<p style="font-size:0.85rem; color:var(--muted);">このページに構築された精密なオントロジーと参考文献を、Zotero・Protégé・表計算・ナレッジグラフ工具用の標準フォーマットでダウンロードします。</p>
+<div style="background:var(--panel2); padding:1rem; border-radius:6px; margin:1rem 0; font-size:0.85rem;"> <b>推奨引用表記:</b><br/> <code>Inference Engineering Study Group (2026). Chapter 1: Prerequisites - Optimization, Tradeoffs, and Economics. AI Lab Explainer Dashboard 01.</code></div>
+<div class="say" data-who="asst" style="margin:1rem 0;">
+<img alt="" aria-hidden="true" class="who" data-img="asst_ledger" src="asst_ledger.png"/>
+<div><b class="name">助手</b><p>出所が確認されない恣意的な主張はパッケージから排除しました。CSL-JSON原本に基づき完全性を検証済みの文献ファイルです。</p></div>
+</div>
+<div class="export-btns">
+<button class="bt primary" id="btnZipExport">📦 オントロジー全体のZIPをダウンロード</button>
+<button class="bt" onclick="downloadRaw('kg.json')">kg.json（中立グラフ）</button>
+<button class="bt" onclick="downloadRaw('kg.jsonld')">JSON-LD</button>
+<button class="bt" onclick="downloadRaw('references.bib')">BibTeX</button>
+<button class="bt" onclick="downloadRaw('references.csl.json')">CSL-JSON</button>
+</div>
+</section>
+</main>
+<footer>
+<div class="wrap" style="padding:0;">
+<p><b>出所文献と事実仕様</b></p>
+<table class="ref-tb">
+<thead>
+<tr><th>ID</th><th>文献名 / 出所</th><th>役割</th><th>確認状態</th></tr>
+</thead>
+<tbody>
+<tr><td>infeng-ch1</td><td>Inference Engineering, Chapter 1: Prerequisites (2026)</td><td>Primary（主教材）</td><td>原文との照合完了</td></tr>
+<tr><td>deepseek2025r1</td><td>DeepSeek-R1: Incentivizing Reasoning Capability in LLMs (2025)</td><td>Background（蒸留の事例）</td><td>発行確認済み</td></tr>
+<tr><td>goodhart1975</td><td>Goodhart's Law: Problems of Monetary Management (1975)</td><td>Theory（評価指標の限界）</td><td>文献で確認</td></tr>
+</tbody>
+</table>
+<p style="margin-top:1.5rem; font-size:0.75rem; color:#6b6984;">すべてのシミュレーション数値は理解を助けるための教育用モデルに基づき、実際のクラウド料金やGPUベンダーのポリシーにより異なる場合があります。</p>
+</div>
+</footer>
+<!-- 머신 러닝 지식 데이터 블록 -->
+<script id="kg-raw" type="application/json">
+  {
+    "version": "1.0",
+    "page": "01_inference_prerequisites",
+    "nodes": [
+      {
+        "id": "lab:concept/inference-optimization",
+        "type": "Concept",
+        "label": {"ko": "推論最適化", "en": "Inference Optimization"},
+        "definition": {"ko": "レイテンシ・スループット・品質・コストのトレードオフの中で最適なバランスポイントを見つけるエンジニアリング過程。"},
+        "page": "01_inference_prerequisites",
+        "anchor": "#overview",
+        "level": 1,
+        "family": "systems",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:method/shared-inference",
+        "type": "Method",
+        "label": {"ko": "共有推論", "en": "Shared Inference"},
+        "definition": {"ko": "パブリックAPIエンドポイントを通じてトークン単位で消費コストを支払うサービング方式。"},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv1",
+        "level": 1,
+        "family": "systems",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:method/dedicated-deployment",
+        "type": "Method",
+        "label": {"ko": "専用デプロイ", "en": "Dedicated Deployment"},
+        "definition": {"ko": "独立した専用GPUインスタンスを借りるかオンプレミスで構成し、独占運営するサービング方式。"},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv1",
+        "level": 2,
+        "family": "systems",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:method/fine-tuning",
+        "type": "Method",
+        "label": {"ko": "ドメイン・ファインチューニング", "en": "Domain Fine-tuning"},
+        "definition": {"ko": "事前学習された基盤モデルの構造を維持したまま、特定ドメイン・データで重みを再調整する技術。"},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv2",
+        "level": 2,
+        "family": "basics",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:method/distillation",
+        "type": "Method",
+        "label": {"ko": "知識蒸留", "en": "Distillation"},
+        "definition": {"ko": "巨大教師モデルの出力確率分布を学習し、小型の生徒モデルにその行動を模倣させる技術。"},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv2",
+        "level": 3,
+        "family": "basics",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:metric/ttft",
+        "type": "Metric",
+        "label": {"ko": "最初のトークン生成時間", "en": "Time to First Token (TTFT)"},
+        "definition": {"ko": "ユーザーが入力を送った後、最初のストリーミング・トークンが返ってくるまでのレイテンシ。"},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv3",
+        "level": 1,
+        "family": "evaluation",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:metric/tps",
+        "type": "Metric",
+        "label": {"ko": "1秒あたりのトークン数", "en": "Tokens Per Second (TPS)"},
+        "definition": {"ko": "最初のトークン出力後のトークン生成速度（レイテンシ指標）、またはサービング・クラスタ全体の総トークン生産量（スループット指標）。"},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv3",
+        "level": 1,
+        "family": "evaluation",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:claim/c01",
+        "type": "Claim",
+        "label": {"ko": "トラフィック規模の転換", "en": "Scale-driven Transition"},
+        "definition": {"ko": "トラフィックが十分に大きくなれば、トークン単位課金より専用GPUの時間単位課金が経済的である。"},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv1",
+        "confidence": "high",
+        "source": [{"cite": "infeng-ch1", "loc": "1.1"}]
+      }
+    ],
+    "edges": [
+      {"s": "lab:method/shared-inference", "p": "lab:contrastsWith", "o": "lab:method/dedicated-deployment", "anchor": "#lv1"},
+      {"s": "lab:method/shared-inference", "p": "lab:hasLimitation", "o": "lab:claim/c01", "anchor": "#lv1"},
+      {"s": "lab:method/fine-tuning", "p": "lab:prerequisiteOf", "o": "lab:method/distillation", "anchor": "#lv2"},
+      {"s": "lab:concept/inference-optimization", "p": "lab:evaluatedBy", "o": "lab:metric/ttft", "anchor": "#lv3"},
+      {"s": "lab:concept/inference-optimization", "p": "lab:evaluatedBy", "o": "lab:metric/tps", "anchor": "#lv3"}
+    ]
+  }
+  </script>
+<script id="kg-ld" type="application/ld+json">
+  {
+    "@context": {
+      "schema": "https://schema.org/",
+      "lab": "urn:lab:"
+    },
+    "@graph": [
+      {
+        "@type": "schema:LearningResource",
+        "schema:name": "推論エンジニアリング基礎 — レイテンシ・スループット・単位経済学の最適バランス",
+        "schema:educationalLevel": "Intermediate",
+        "schema:learningResourceType": "interactive explainer"
+      }
+    ]
+  }
+  </script>
+<script id="refs-csl" type="application/json">
+  [
+    {
+      "id": "infeng-ch1",
+      "type": "chapter",
+      "title": "Prerequisites",
+      "container-title": "Inference Engineering: Speed and Scale for Generative AI",
+      "author": [{"family": "Author", "given": "Inference"}],
+      "issued": {"date-parts": [[2026]]},
+      "chapter": "1",
+      "lab": {
+        "role": "primary",
+        "supports": ["lab:concept/inference-optimization", "lab:claim/c01"],
+        "verified": {"title": true, "authors": true, "year": true, "venue": true, "doi": false, "pages": false}
+      }
+    },
+    {
+      "id": "deepseek2025r1",
+      "type": "article-journal",
+      "title": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+      "author": [{"family": "DeepSeek-AI", "literal": "DeepSeek-AI et al."}],
+      "issued": {"date-parts": [[2025]]},
+      "lab": {
+        "role": "background",
+        "supports": ["lab:method/distillation"],
+        "verified": {"title": true, "authors": true, "year": true, "venue": true, "doi": false, "pages": false}
+      }
+    }
+  ]
+  </script>
+<script id="page-meta" type="application/json">
+  {
+    "title": "推論エンジニアリング基礎 — レイテンシ・スループット・単位経済学の最適バランス",
+    "series": "AI Lab Explainer Dashboard",
+    "number": "01",
+    "date": "2026-10-25",
+    "version": "1.0",
+    "language": ["ko"],
+    "about": ["lab:concept/inference-optimization", "lab:method/shared-inference", "lab:method/dedicated-deployment"]
+  }
+  </script>
+<!-- 런타임 스크립트 -->
+<script>
+    /* 스크롤 진행률 */
+    window.addEventListener('scroll', function() {
+      var h = document.documentElement, b = document.body;
+      var st = 'scrollTop', sh = 'scrollHeight';
+      var percent = (h[st]||b[st]) / ((h[sh]||b[sh]) - h.clientHeight) * 100;
+      document.getElementById('prog').style.width = percent + '%';
+    });
+
+    /* 용어 툴팁 사전 */
+    var GLOSSARY = {
+      '共有推論': 'パブリックAPIを通じて要求したトークン量に比例してだけ支払う方式。初期構築コストはゼロです。',
+      '専用デプロイ': 'GPUハードウェアを直接借りて独立した推論サーバーを構築する方式。大規模トラフィックでは単価が安くなります。',
+      '蒸留': '大型教師モデルの推論確率分布を模倣するよう小型モデルを訓練し、軽く速くする圧縮技術。',
+      'TTFT': 'Time to First Token。プロンプトを送信した後、最初のトークンが画面に出力されるまでの時間。',
+      'TPS': 'Tokens Per Second。1秒に生成されるトークン数で、レイテンシや総スループットを測る標準指標。'
+    };
+
+    var tip = document.getElementById('tip');
+    document.querySelectorAll('.jt').forEach(function(el) {
+      el.addEventListener('mouseenter', function(e) {
+        var term = el.getAttribute('data-term') || el.textContent;
+        if(GLOSSARY[term]) {
+          tip.textContent = GLOSSARY[term];
+          tip.style.display = 'block';
+          tip.style.left = (e.clientX + 10) + 'px';
+          tip.style.top = (e.clientY + 10) + 'px';
+        }
+      });
+      el.addEventListener('mousemove', function(e) {
+        tip.style.left = (e.clientX + 10) + 'px';
+        tip.style.top = (e.clientY + 10) + 'px';
+      });
+      el.addEventListener('mouseleave', function() {
+        tip.style.display = 'none';
+      });
+    });
+
+    /* 퀴즈 채점 */
+    function checkQ(btn, choice) {
+      var q = btn.closest('.quiz-q');
+      var ans = parseInt(q.getAttribute('data-ans'), 10);
+      var fb = q.querySelector('.quiz-fb');
+      if (choice === ans) {
+        fb.className = 'quiz-fb ok';
+        fb.textContent = '正解です! 原文の核心概念と完全に一致します。';
+      } else {
+        fb.className = 'quiz-fb no';
+        fb.textContent = 'もう一度考えてみてください。本文のトレードオフ説明を参考に。';
+      }
+    }
+
+    /* 캔버스 1: 공유 vs 전용 비용 비교 */
+    var c1 = document.getElementById('c1');
+    var ctx1 = c1.getContext('2d');
+    var c1Range = document.getElementById('c1Tokens');
+    var c1Val = document.getElementById('c1TokensVal');
+    var ins1 = document.getElementById('ins1');
+
+    function drawC1() {
+      var w = c1.width = c1.clientWidth;
+      var h = c1.height = 260;
+      var tokensM = parseFloat(c1Range.value);
+      c1Val.textContent = tokensM + 'M トークン/日';
+
+      ctx1.clearRect(0, 0, w, h);
+      ctx1.strokeStyle = 'rgba(157,155,184,0.1)';
+      ctx1.lineWidth = 1;
+      for(var i=1; i<5; i++) {
+        var y = h - (h/5)*i;
+        ctx1.beginPath(); ctx1.moveTo(40, y); ctx1.lineTo(w-20, y); ctx1.stroke();
+      }
+
+      ctx1.beginPath();
+      ctx1.strokeStyle = '#57d0dc'; ctx1.lineWidth = 2.5;
+      for(var x=0; x<=50; x++) {
+        var px = 40 + (x/50)*(w-60);
+        var cost = (x * 30) * 2.5;
+        var py = h - 30 - (cost/4500)*(h-60);
+        if(x===0) ctx1.moveTo(px, py); else ctx1.lineTo(px, py);
+      }
+      ctx1.stroke();
+
+      var dedicatedCost = 1800;
+      var dy = h - 30 - (dedicatedCost/4500)*(h-60);
+      ctx1.beginPath();
+      ctx1.strokeStyle = '#ef5b5b'; ctx1.lineWidth = 2.5; ctx1.setLineDash([5, 5]);
+      ctx1.moveTo(40, dy); ctx1.lineTo(w-20, dy); ctx1.stroke();
+      ctx1.setLineDash([]);
+
+      var curX = 40 + (tokensM/50)*(w-60);
+      var curSharedCost = (tokensM * 30) * 2.5;
+      var curSharedY = h - 30 - (curSharedCost/4500)*(h-60);
+
+      ctx1.fillStyle = '#f1b646';
+      ctx1.beginPath(); ctx1.arc(curX, curSharedY, 6, 0, Math.PI*2); ctx1.fill();
+
+      ctx1.font = '11px sans-serif';
+      ctx1.fillStyle = '#57d0dc'; ctx1.fillText('共有API（トークン単位課金）', 50, 25);
+      ctx1.fillStyle = '#ef5b5b'; ctx1.fillText('専用GPU（月固定賃借）', 200, 25);
+
+      if (curSharedCost > dedicatedCost) {
+        var diff = Math.round(curSharedCost - dedicatedCost);
+        ins1.innerHTML = '現在のトラフィック（' + tokensM + 'M/日）では、<b>専用デプロイ</b>が共有APIより月約<b>$' + diff + '</b>節約になります。損益分岐点を突破しました!';
+      } else {
+        var diff = Math.round(dedicatedCost - curSharedCost);
+        ins1.innerHTML = '現在のトラフィック（' + tokensM + 'M/日）では、<b>共有API</b>が専用GPUより月約<b>$' + diff + '</b>安くなります。固定費の負担がありません。';
+      }
+    }
+    c1Range.addEventListener('input', drawC1);
+    window.addEventListener('resize', drawC1);
+    drawC1();
+
+    /* 캔버스 2: 벤치마크 비교 막대 */
+    var c2 = document.getElementById('c2');
+    var ctx2 = c2.getContext('2d');
+    function drawC2() {
+      var w = c2.width = c2.clientWidth;
+      var h = c2.height = 240;
+      ctx2.clearRect(0,0,w,h);
+
+      var items = [
+        {name: '671Bフロンティア汎用', acc: 98.6, cost: 100, color: '#57d0dc'},
+        {name: '8Bゼロショット・ベース', acc: 68.2, cost: 12, color: '#9d9bb8'},
+        {name: '3B専用ドメイン・ファインチューニング', acc: 97.4, cost: 8, color: '#5ee39c'}
+      ];
+
+      var barH = 32;
+      for(var i=0; i<items.length; i++) {
+        var y = 35 + i * 65;
+        ctx2.fillStyle = '#eceaf3';
+        ctx2.font = '13px sans-serif';
+        ctx2.fillText(items[i].name + '（精度: ' + items[i].acc + '%)', 40, y);
+
+        ctx2.fillStyle = 'rgba(255,255,255,0.05)';
+        ctx2.fillRect(40, y+8, w-140, barH);
+
+        var fillW = ((w-140) * (items[i].cost / 100));
+        ctx2.fillStyle = items[i].color;
+        ctx2.fillRect(40, y+8, fillW, barH);
+
+        ctx2.fillStyle = '#eceaf3';
+        ctx2.font = 'bold 12px sans-serif';
+        ctx2.fillText('コスト ' + items[i].cost + '%', 40 + fillW + 10, y+28);
+      }
+    }
+    document.getElementById('btnBench').addEventListener('click', drawC2);
+    drawC2();
+
+    /* 캔버스 3: P99 꼬리 지연 히스토그램 */
+    var c3 = document.getElementById('c3');
+    var ctx3 = c3.getContext('2d');
+    var c3Conc = document.getElementById('c3Conc');
+    var c3ConcVal = document.getElementById('c3ConcVal');
+
+    function drawC3() {
+      var w = c3.width = c3.clientWidth;
+      var h = c3.height = 260;
+      var conc = parseInt(c3Conc.value, 10);
+      c3ConcVal.textContent = conc + '件の同時リクエスト';
+
+      ctx3.clearRect(0, 0, w, h);
+      ctx3.beginPath();
+      ctx3.strokeStyle = '#82b8ff'; ctx3.lineWidth = 2.5;
+
+      ctx3.moveTo(30, h-30);
+      for(var x=30; x<w-30; x++) {
+        var t = (x-30)/(w-60) * 10;
+        var yVal = Math.pow(t, 2) * Math.exp(-t * (1.2 - conc*0.008));
+        var py = (h-30) - (yVal * (h*0.75));
+        ctx3.lineTo(x, Math.min(h-30, py));
+      }
+      ctx3.stroke();
+
+      var p50x = 30 + (w-60)*0.18;
+      var meanX = 30 + (w-60)*0.26;
+      var p99x = 30 + (w-60)*(0.65 + conc*0.004);
+
+      function vLine(x, color, label) {
+        ctx3.beginPath(); ctx3.strokeStyle = color; ctx3.setLineDash([4,4]);
+        ctx3.moveTo(x, 20); ctx3.lineTo(x, h-30); ctx3.stroke(); ctx3.setLineDash([]);
+        ctx3.fillStyle = color; ctx3.font = '11px sans-serif'; ctx3.fillText(label, x-15, 18);
+      }
+      vLine(p50x, '#5ee39c', 'P50');
+      vLine(meanX, '#f1b646', 'Mean');
+      vLine(p99x, '#f0604d', 'P99 テール');
+    }
+    c3Conc.addEventListener('input', drawC3);
+    drawC3();
+
+    /* 대결 인터랙션 */
+    document.getElementById('btnDuelRun').addEventListener('click', function() {
+      var bars = document.getElementById('duelBars');
+      var asst = document.getElementById('duelAsst');
+      var duel = document.getElementById('duel');
+      bars.style.display = 'block';
+      asst.style.display = 'flex';
+      duel.classList.add('open');
+      this.textContent = '再計算完了（ハエの勝ち）';
+    });
+
+    /* 지식 색인 검색 및 필터 */
+    var kgData = JSON.parse(document.getElementById('kg-raw').textContent);
+    var kgListEl = document.getElementById('kgList');
+    var kgSearch = document.getElementById('kgSearch');
+    var curFilter = 'all';
+
+    function renderKg() {
+      var q = kgSearch.value.toLowerCase();
+      kgListEl.innerHTML = '';
+      kgData.nodes.forEach(function(n) {
+        if (curFilter !== 'all' && n.type !== curFilter) return;
+        var match = n.label.ko.toLowerCase().indexOf(q) !== -1 ||
+                    n.label.en.toLowerCase().indexOf(q) !== -1 ||
+                    n.definition.ko.toLowerCase().indexOf(q) !== -1;
+        if (!match) return;
+
+        var div = document.createElement('div');
+        div.className = 'kg-item';
+        div.innerHTML = '<div><b>' + n.label.ko + '</b> <span style="font-size:0.75rem; color:var(--muted);">' + n.label.en + '</span>' +
+                        '<p style="font-size:0.8rem; margin-top:0.2rem; color:var(--muted);">' + n.definition.ko + '</p></div>' +
+                        '<a href="' + n.anchor + '" style="color:var(--gfp); text-decoration:none; font-size:0.8rem; white-space:nowrap; margin-left:1rem;">移動 ➔</a>';
+        kgListEl.appendChild(div);
+      });
+    }
+
+    kgSearch.addEventListener('input', renderKg);
+    document.querySelectorAll('.filter-chips .chip').forEach(function(c) {
+      c.addEventListener('click', function() {
+        document.querySelectorAll('.filter-chips .chip').forEach(function(el){ el.classList.remove('on'); });
+        c.classList.add('on');
+        curFilter = c.getAttribute('data-type');
+        renderKg();
+      });
+    });
+    renderKg();
+
+    /* 순수 브라우저 ZIP 빌더 */
+    var CRC = (function(){
+      var t=[], c;
+      for(var n=0; n<256; n++){ c=n; for(var k=0; k<8; k++) c=c&1 ? 0xEDB88320^(c>>>1) : c>>>1; t[n]=c>>>0; }
+      return function(u8){ var x=0xFFFFFFFF; for(var i=0; i<u8.length; i++) x=t[(x^u8[i])&255]^(x>>>8); return (x^0xFFFFFFFF)>>>0; };
+    })();
+
+    function makeZip(files) {
+      var enc = new TextEncoder(), parts = [], central = [], off = 0;
+      function u16(v){ return [v&255, (v>>8)&255]; }
+      function u32(v){ return [v&255, (v>>8)&255, (v>>16)&255, (v>>>24)&255]; }
+
+      files.forEach(function(f) {
+        var name = enc.encode(f.name), data = enc.encode(f.text), crc = CRC(data);
+        var head = [].concat(u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0));
+        parts.push(new Uint8Array(head), name, data);
+        central.push([].concat(u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(off)), name);
+        off += head.length + name.length + data.length;
+      });
+      var cdStart = off, cdLen = 0;
+      central.forEach(function(c){ parts.push(new Uint8Array(c)); cdLen += c.length; });
+      parts.push(new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(cdLen), u32(cdStart), u16(0))));
+      return new Blob(parts, {type:'application/zip'});
+    }
+
+    document.getElementById('btnZipExport').addEventListener('click', function() {
+      var files = [
+        {name: 'kg.json', text: document.getElementById('kg-raw').textContent},
+        {name: 'kg.jsonld', text: document.getElementById('kg-ld').textContent},
+        {name: 'references.csl.json', text: document.getElementById('refs-csl').textContent},
+        {name: 'page_meta.json', text: document.getElementById('page-meta').textContent},
+        {name: 'README.txt', text: 'AI Lab Explainer Chapter 01 Inference Engineering Package\nIncludes image assets and ontology exports.\nGenerated on 2026-10-25.'}
+      ];
+      var blob = makeZip(files);
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'kg_01_inference_prerequisites.zip';
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    });
+
+    function downloadRaw(type) {
+      var content = '', name = type;
+      if (type === 'kg.json') content = document.getElementById('kg-raw').textContent;
+      if (type === 'kg.jsonld') content = document.getElementById('kg-ld').textContent;
+      if (type === 'references.csl.json') content = document.getElementById('refs-csl').textContent;
+      if (type === 'references.bib') content = '@chapter{infeng-ch1,\n  title = {Prerequisites},\n  booktitle = {Inference Engineering},\n  year = {2026}\n}';
+      
+      var blob = new Blob([content], {type: 'text/plain;charset=utf-8'});
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    }
+  </script>
+</body>
+</html>

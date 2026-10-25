@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1, viewport-fit=cover" name="viewport"/>
+<title>추론 엔지니어링 기초 — 지연시간·처리량·단위 경제학의 최적 균형</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<!-- 오픈그래프 및 서지 메타데이터 -->
+<meta content="추론 엔지니어링 기초 — 최적화와 장부 트레이드오프" property="og:title"/>
+<meta content="NFL 선수처럼 특화된 서빙 인프라 설계: 공유 API vs 전용 GPU 배포, 도메인 파인튜닝, P99 꼬리 지연 분석" property="og:description"/>
+<meta content="og_01.png" property="og:image"/>
+<meta content="추론 엔지니어링 기초 — 지연시간·처리량·단위 경제학의 최적 균형" name="citation_title"/>
+<meta content="2026/10/25" name="citation_publication_date"/>
+<meta content="추론 엔지니어링 기초 — 지연시간·처리량·단위 경제학의 최적 균형" name="dc.title"/>
+<meta content="ko" name="dc.language"/>
+<style>
+    :root {
+      --bg: #13141f; --panel: #1c1e2d; --panel2: #25283a; --rule: #363a52;
+      --text: #eceaf3; --muted: #9d9bb8;
+      --stain: #d672d6; --gfp: #5ee39c; --eye: #f0604d; --amber: #f1b646; --info: #82b8ff;
+      --c-doc: #b07cff; --c-asst: #ff86b8; --c-fly: #ef5b5b; --c-robo: #57d0dc;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+      font-size: 16px; line-height: 1.6; word-break: keep-all; -webkit-font-smoothing: antialiased;
+    }
+    #prog { position: fixed; top: 0; left: 0; height: 3px; background: var(--gfp); width: 0%; z-index: 1000; }
+    nav.top {
+      position: sticky; top: 0; height: 54px; background: rgba(19, 20, 31, 0.88);
+      backdrop-filter: blur(8px); border-bottom: 1px solid var(--rule); display: flex;
+      align-items: center; padding: 0 1.5rem; gap: 1.2rem; overflow-x: auto; z-index: 900; white-space: nowrap;
+    }
+    nav.top .logo { font-weight: 700; color: var(--text); font-size: 0.95rem; }
+    nav.top a { color: var(--muted); text-decoration: none; font-size: 0.85rem; font-weight: 500; }
+    nav.top a:hover { color: var(--text); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 2.5rem 1.25rem; }
+    
+    /* 히어로 섹션 (bg_01.png 연동) */
+    header.hero {
+      position: relative; padding: 3.5rem 1.5rem;
+      background: linear-gradient(90deg, rgba(19,20,31,0.96) 0%, rgba(19,20,31,0.85) 45%, rgba(19,20,31,0.3) 100%),
+                  url('bg_01.png') no-repeat center right / cover;
+      border-bottom: 1px solid var(--rule); overflow: hidden;
+    }
+    .hero-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; background: rgba(241,182,70,0.15); color: var(--amber); font-size: 0.8rem; font-weight: 700; margin-bottom: 0.8rem; }
+    h1 { font-size: clamp(28px, 4.5vw, 46px); font-weight: 700; line-height: 1.25; margin-bottom: 0.8rem; }
+    p.lead { font-size: 1.15rem; color: var(--muted); max-width: 720px; margin-bottom: 1.5rem; }
+    
+    .hero-stage {
+      margin: 2rem 0 1.5rem 0; text-align: center; background: rgba(15,16,25,0.7);
+      border: 1px solid var(--rule); border-radius: 10px; padding: 1rem;
+    }
+    .hero-stage img { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 0 auto; }
+    .caption { font-size: 0.8rem; color: var(--muted); margin-top: 0.6rem; text-align: center; }
+
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin: 1.8rem 0; }
+    .kpi { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1rem; }
+    .kpi.g { border-left: 4px solid var(--gfp); } .kpi.m { border-left: 4px solid var(--stain); }
+    .kpi.r { border-left: 4px solid var(--eye); } .kpi.a { border-left: 4px solid var(--amber); }
+    .kpi .num { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+    .kpi .lbl { font-size: 0.8rem; color: var(--muted); margin-top: 0.2rem; }
+    
+    .dialog-hero { background: var(--panel2); border-left: 4px solid var(--c-doc); border-radius: 6px; padding: 1.2rem; margin-top: 1.5rem; }
+    .dialog-hero p { margin-bottom: 0.4rem; font-size: 0.95rem; }
+    .dialog-hero p:last-child { margin-bottom: 0; }
+    .dialog-hero b { display: inline-block; width: 100px; }
+
+    .cast { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1rem; margin: 2rem 0; }
+    .cast-card { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1rem; }
+    .cast-card h4 { font-size: 1rem; margin-bottom: 0.3rem; }
+    .cast-card p { font-size: 0.85rem; color: var(--muted); }
+
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+    .step-card { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1.2rem; }
+    .step-card span.idx { display: inline-block; width: 24px; height: 24px; background: var(--panel2); border-radius: 50%; text-align: center; line-height: 24px; font-size: 0.75rem; font-weight: 700; margin-bottom: 0.6rem; color: var(--gfp); }
+
+    .level { margin-bottom: 4rem; padding-top: 2rem; border-top: 1px solid var(--rule); }
+    .lvhead { margin-bottom: 1.5rem; }
+    .hexno { display: inline-block; width: 34px; height: 38px; background: var(--rule); clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); text-align: center; line-height: 38px; font-weight: 700; color: var(--gfp); margin-right: 0.6rem; vertical-align: middle; }
+    h2 { display: inline; font-size: clamp(22px, 3vw, 30px); vertical-align: middle; }
+    p.sub { margin-top: 0.5rem; font-size: 0.85rem; }
+    .lvtag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-right: 0.4rem; background: var(--panel2); color: var(--muted); }
+    .lvtag.g { color: var(--gfp); }
+
+    .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.2rem 0; }
+    .pair > div { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1.2rem; }
+    .pair .tag { font-size: 0.8rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .pair .tag.fly { color: var(--eye); } .pair .tag.nn { color: var(--stain); }
+
+    .panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+    .cwrap { position: relative; width: 100%; background: #0f1019; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin-bottom: 1rem; }
+    canvas { display: block; width: 100%; }
+    .ctrl { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; background: var(--panel2); padding: 0.8rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
+    .ctrl .group { display: flex; align-items: center; gap: 0.6rem; }
+    .glabel { font-size: 0.8rem; color: var(--muted); }
+    button.bt { background: var(--rule); color: var(--text); border: none; padding: 0.45rem 0.9rem; border-radius: 4px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: 0.15s; }
+    button.bt:hover { background: #444966; }
+    button.bt.primary { background: var(--gfp); color: #000; font-weight: 700; }
+    button.bt.primary:hover { background: #4bd38e; }
+    .val { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text); font-size: 0.9rem; }
+    .insight { background: var(--panel2); border-left: 3px solid var(--amber); padding: 0.8rem 1rem; border-radius: 4px; font-size: 0.9rem; margin-top: 1rem; }
+    
+    .cut-block { margin: 1.5rem 0; background: #0f1019; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; text-align: center; padding: 0.8rem; }
+    .cut-block img { max-width: 100%; height: auto; border-radius: 4px; display: block; margin: 0 auto; }
+
+    .explain { background: rgba(241, 182, 70, 0.08); border: 1px solid rgba(241, 182, 70, 0.3); border-radius: 8px; padding: 1.2rem; margin: 1.2rem 0; }
+    .explain h4 { color: var(--amber); margin-bottom: 0.5rem; font-size: 0.95rem; }
+    .explain ol { padding-left: 1.2rem; font-size: 0.9rem; }
+    .explain ol li { margin-bottom: 0.3rem; }
+
+    .bridge { border-radius: 8px; padding: 1rem; margin: 1rem 0; font-size: 0.9rem; }
+    .bridge.field { background: rgba(240, 96, 77, 0.08); border: 1px solid rgba(240, 96, 77, 0.3); }
+    .bridge.gen { background: rgba(130, 184, 255, 0.08); border: 1px solid rgba(130, 184, 255, 0.3); }
+    .bridge b { display: block; margin-bottom: 0.2rem; }
+    .lim { font-size: 0.8rem; color: var(--muted); margin-top: 0.4rem; display: block; }
+
+    .say { display: flex; gap: 1rem; align-items: flex-start; background: var(--panel2); border-radius: 8px; padding: 1rem; margin: 1.2rem 0; }
+    .say img.who { width: 56px; height: 56px; border-radius: 6px; background: #000; flex-shrink: 0; object-fit: contain; }
+    .say[data-who="doc"] { border-left: 3px solid var(--c-doc); }
+    .say[data-who="asst"] { border-left: 3px solid var(--c-asst); }
+    .say[data-who="fly"] { border-left: 3px solid var(--c-fly); }
+    .say[data-who="robo"] { border-left: 3px solid var(--c-robo); }
+    .say .name { display: block; font-size: 0.8rem; margin-bottom: 0.2rem; }
+    .say[data-who="doc"] .name { color: var(--c-doc); }
+    .say[data-who="asst"] .name { color: var(--c-asst); }
+    .say[data-who="fly"] .name { color: var(--c-fly); }
+    .say[data-who="robo"] .name { color: var(--c-robo); }
+    .say p { font-size: 0.9rem; margin: 0; }
+
+    .quiz { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1.2rem; margin: 1.5rem 0; }
+    .quiz h4 { font-size: 0.95rem; color: var(--info); margin-bottom: 0.8rem; }
+    .quiz-q { margin-bottom: 1.2rem; }
+    .quiz-q p { font-size: 0.9rem; margin-bottom: 0.5rem; font-weight: 500; }
+    .quiz-opt { display: flex; flex-direction: column; gap: 0.4rem; }
+    .quiz-btn { background: var(--panel2); border: 1px solid var(--rule); color: var(--text); padding: 0.5rem 0.8rem; text-align: left; border-radius: 4px; font-size: 0.85rem; cursor: pointer; }
+    .quiz-btn:hover { background: #32364e; }
+    .quiz-fb { font-size: 0.85rem; margin-top: 0.4rem; padding: 0.4rem 0.6rem; border-radius: 4px; display: none; }
+    .quiz-fb.ok { background: rgba(94, 227, 156, 0.15); color: var(--gfp); display: block; }
+    .quiz-fb.no { background: rgba(240, 96, 77, 0.15); color: var(--eye); display: block; }
+
+    /* 대결 섹션 */
+    .duel { background: linear-gradient(180deg, var(--panel2) 0%, var(--panel) 100%); border: 2px solid var(--rule); border-radius: 10px; padding: 2rem 1.5rem; margin: 3rem 0; }
+    .duel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; text-align: center; }
+    .duel-head h3 { font-size: 1.5rem; color: var(--amber); }
+    .duel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+    .duel-card { background: var(--bg); border: 1px solid var(--rule); border-radius: 8px; padding: 1.2rem; }
+    .duel-card.fly { border-top: 4px solid var(--c-fly); }
+    .duel-card.robo { border-top: 4px solid var(--c-robo); }
+    .bars { margin: 1.5rem 0; }
+    .bar-row { margin-bottom: 0.8rem; }
+    .bar-lbl { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.2rem; }
+    .bar-bg { height: 16px; background: var(--panel2); border-radius: 8px; overflow: hidden; }
+    .bar-fill { height: 100%; width: 0%; transition: width 0.6s ease; }
+    .verdict { background: rgba(176, 124, 255, 0.1); border-left: 4px solid var(--c-doc); padding: 1rem; border-radius: 4px; margin-top: 1rem; display: none; }
+    .open .verdict { display: block; }
+
+    /* 아웃트로 무대 (sc_01_outro.png 연동) */
+    .outro-stage {
+      margin: 2rem 0; background: #0f1019; border: 1px solid var(--rule); border-radius: 10px;
+      overflow: hidden; padding: 1rem; text-align: center;
+    }
+    .outro-stage img { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 0 auto; }
+
+    /* 색인 & 꾸러미 */
+    .kg-sec, .export-sec { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 1.8rem; margin: 3rem 0; }
+    .filter-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 1rem 0; }
+    .chip { background: var(--panel2); border: 1px solid var(--rule); padding: 0.3rem 0.6rem; border-radius: 20px; font-size: 0.75rem; color: var(--muted); cursor: pointer; }
+    .chip.on { background: var(--rule); color: var(--text); font-weight: 700; }
+    .kg-search { width: 100%; padding: 0.6rem 0.8rem; background: var(--bg); border: 1px solid var(--rule); color: var(--text); border-radius: 4px; margin-bottom: 1rem; }
+    .kg-list { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; }
+    .kg-item { background: var(--panel2); padding: 0.6rem 0.8rem; border-radius: 4px; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; }
+    .export-btns { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.2rem; }
+    
+    #tip { position: fixed; background: #2d3148; border: 1px solid var(--amber); color: var(--text); padding: 0.5rem 0.8rem; border-radius: 6px; font-size: 0.8rem; max-width: 260px; pointer-events: none; z-index: 2000; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    .jt { border-bottom: 1px dashed var(--amber); cursor: help; color: inherit; }
+    footer { border-top: 1px solid var(--rule); padding: 3rem 1.5rem; color: var(--muted); font-size: 0.85rem; }
+    .ref-tb { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    .ref-tb th, .ref-tb td { border: 1px solid var(--rule); padding: 0.6rem; text-align: left; }
+    .ref-tb th { background: var(--panel2); color: var(--text); }
+    @media(max-width: 760px) {
+      .pair, .duel-grid { grid-template-columns: 1fr; }
+      nav.top { padding: 0 1rem; }
+      .wrap { padding: 1.5rem 1rem; }
+    }
+  </style>
+
+  <link rel="alternate" hreflang="ko" href="01_inference_prerequisites.html">
+  <link rel="alternate" hreflang="en" href="01_inference_prerequisites.en.html">
+  <link rel="alternate" hreflang="zh-CN" href="01_inference_prerequisites.zh.html">
+  <link rel="alternate" hreflang="ja" href="01_inference_prerequisites.ja.html">
+  <link rel="alternate" hreflang="uz" href="01_inference_prerequisites.uz.html">
+  <link rel="alternate" hreflang="ru" href="01_inference_prerequisites.ru.html">
+  <link rel="alternate" hreflang="vi" href="01_inference_prerequisites.vi.html">
+  <link rel="alternate" hreflang="x-default" href="01_inference_prerequisites.html">
+<script>
+(function(){
+var LANGS=[["ko","한국어"],["en","English"],["zh","中文"],["ja","日本語"],["uz","Oʻzbekcha"],["ru","Русский"],["vi","Tiếng Việt"]];
+var CUR="ko",BASE="01_inference_prerequisites",KEY="lab_explainer_lang";
+function fname(l){return l==="ko"?BASE+".html":BASE+"."+l+".html";}
+function save(l){try{localStorage.setItem(KEY,l);}catch(e){}}
+var qs=new URLSearchParams(location.search).get("lang");
+if(qs&&qs!==CUR){for(var i=0;i<LANGS.length;i++){if(LANGS[i][0]===qs){save(qs);location.replace(fname(qs)+location.hash);break;}}}
+var isFile=/^file:/.test(location.protocol);
+if(CUR==="ko"&&!location.search){
+var want=null;
+try{want=localStorage.getItem(KEY);}catch(e){}
+if(!want&&!isFile){var ls=navigator.languages||[];for(var j=0;j<ls.length;j++){var c=String(ls[j]).slice(0,2).toLowerCase();if(["en","zh","ja","uz","ru","vi"].indexOf(c)>=0){want=c;break;}if(c==="ko"){break;}}}
+if(want&&want!=="ko"){
+var t=fname(want)+(location.hash||"");
+document.documentElement.style.visibility="hidden";
+var shown=false;function show(){if(!shown){shown=true;document.documentElement.style.visibility="";}}
+setTimeout(show,2500);
+if(isFile){show();location.replace(t);}
+else{fetch(t,{method:"HEAD"}).then(function(r){if(r.ok){location.replace(t);}show();})["catch"](function(){show();});}
+}}
+function buildUI(){
+var sel=document.createElement("select");
+sel.setAttribute("aria-label","Language");
+sel.style.cssText="background:#25283a;color:#eceaf3;border:1px solid #363a52;border-radius:4px;font:inherit;font-size:0.8rem;padding:0.2rem 0.4rem;cursor:pointer;max-width:110px;";
+for(var i=0;i<LANGS.length;i++){var o=document.createElement("option");o.value=LANGS[i][0];o.textContent=LANGS[i][1];if(LANGS[i][0]===CUR){o.selected=true;}sel.appendChild(o);}
+sel.addEventListener("change",function(){save(sel.value);location.href=fname(sel.value)+(location.hash||"");});
+var slot=document.getElementById("langslot");
+if(slot){slot.appendChild(sel);}else{var logo=document.querySelector("nav.top .logo");if(logo&&logo.parentNode){logo.parentNode.insertBefore(sel,logo.nextSibling);}}
+var wrap=document.createElement("div");wrap.className="langbanner";
+wrap.style.cssText="position:fixed;right:14px;bottom:14px;z-index:3000;display:flex;flex-direction:column;align-items:flex-end;";
+var names={en:"English",zh:"中文",ja:"日本語",uz:"Oʻzbekcha",ru:"Русский",vi:"Tiếng Việt"};
+var btn=document.createElement("button");btn.textContent="🌐 "+(CUR==="ko"?"한국어":names[CUR]);
+btn.style.cssText="border-radius:999px;border:1px solid #363a52;background:rgba(28,30,45,0.92);color:#eceaf3;padding:0.5rem 0.9rem;font-size:0.85rem;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.5);font-family:inherit;";
+btn.setAttribute("aria-haspopup","true");btn.setAttribute("aria-expanded","false");
+var list=document.createElement("div");list.style.cssText="display:none;flex-direction:column;background:rgba(28,30,45,0.97);border:1px solid #363a52;border-radius:10px;padding:0.4rem;margin-bottom:6px;";
+for(var k=0;k<LANGS.length;k++){(function(p){var b=document.createElement("button");b.textContent=p[1];b.style.cssText="background:none;border:none;cursor:pointer;padding:0.3rem 0.7rem;border-radius:6px;font-size:0.85rem;font-family:inherit;"+(p[0]===CUR?"color:#f1b646;font-weight:700;":"color:#eceaf3;");b.addEventListener("click",function(){list.style.display="none";save(p[0]);location.href=fname(p[0])+(location.hash||"");});list.appendChild(b);})(LANGS[k]);}
+btn.addEventListener("click",function(e){e.stopPropagation();var open=list.style.display==="none";list.style.display=open?"flex":"none";btn.setAttribute("aria-expanded",open?"true":"false");});
+document.addEventListener("click",function(e){if(!wrap.contains(e.target)){list.style.display="none";}});
+document.addEventListener("keydown",function(e){if(e.key==="Escape"){list.style.display="none";}});
+wrap.appendChild(list);wrap.appendChild(btn);document.body.appendChild(wrap);
+var st=document.createElement("style");st.textContent="@media print{.langbanner{display:none!important}}";
+document.head.appendChild(st);
+}
+if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",buildUI);}else{buildUI();}
+})();
+</script>
+</head>
+<body>
+<div id="prog"></div>
+<div id="tip"></div>
+<nav class="top">
+<span class="logo">⚡ AI Lab Explainer</span>
+<a href="#overview">큰 그림</a>
+<a href="#lv1">1.공유 vs 전용</a>
+<a href="#lv2">2.도메인 특화</a>
+<a href="#lv3">3.지연시간 vs 처리량</a>
+<a href="#duel">끝장 대결</a>
+<a href="#outro">정리 &amp; 결산</a>
+<a href="#kg">지식 색인</a>
+<a href="#export">꾸러미</a>
+</nav>
+<!-- 히어로 섹션 (F판 bg_01.png 배경 연동) -->
+<header class="hero" data-img="bg_01">
+<div class="wrap">
+<span class="hero-badge">교과서 1장 · 추론 엔지니어링 전제조건</span>
+<h1>최적화의 진짜 의미는<br/>'최대화'가 아닌 '균형'이다</h1>
+<p class="lead">NFL 미식축구 선수는 스모 선수만큼 무겁지 않고, 단거리 육상 선수만큼 빠르지 않으며, 역도 선수만큼 힘만 세지 않습니다. 한 시즌 포지션을 버텨내는 최적의 균형을 찾듯, AI 서비스 인프라도 지연시간·처리량·단위 경제학의 절묘한 균형점을 찾아야 합니다.</p>
+<!-- 히어로 무대 일러스트 (E판 sc_01_hero.png 연동) -->
+<div class="hero-stage">
+<img alt="최적의 추론 서빙 균형점을 두고 논쟁하는 네 연구원 캐릭터" data-img="sc_01_hero" src="sc_01_hero.png"/>
+<p class="caption">연구실 관제 콘솔에서 장부와 지표의 최적 균형을 계측하는 네 캐릭터</p>
+</div>
+<div class="kpis">
+<div class="kpi g"><div class="num">1,200만</div><div class="lbl">손익분기 토큰/일 (공유 vs 전용)</div></div>
+<div class="kpi m"><div class="num">TTFT vs TPS</div><div class="lbl">컴퓨팅 바운드 vs 메모리 바운드</div></div>
+<div class="kpi r"><div class="num">P99 꼬리 지연</div><div class="lbl">오른쪽으로 치우친 실제 사용자 체감</div></div>
+<div class="kpi a"><div class="num">수십 B ➔ 3B</div><div class="lbl">도메인 특화 파인튜닝 크기 절감</div></div>
+</div>
+<div class="dialog-hero">
+<p><b style="color:var(--c-doc)">박사:</b> "무조건 세계 최대 모델을 사서 최고 속도로 돌리는 건 연구가 아니라 돈 낭비예요. 제약 조건을 좁힐수록 승리합니다!"</p>
+<p><b style="color:var(--c-asst)">조수:</b> "교과서 1장의 원문 통계와 수식 모델에 따라 장부와 지연시간을 실시간 시뮬레이터로 세팅했어요."</p>
+<p><b style="color:var(--c-fly)">초파리:</b> "난 1밀리그램 뇌로도 실시간 날아다녀. 671B짜리 공룡 모델을 단순 SQL 생성에 부르는 바보가 누구지?"</p>
+<p><b style="color:var(--c-robo)">Money-Robo:</b> "자본주의에선 속도가 곧 금화다! 공유 API로 즉시 띄우고 GPU를 풀가동해야 돈을 벌지!"</p>
+</div>
+</div>
+</header>
+<main class="wrap">
+<!-- 등장인물 카드 -->
+<section class="cast">
+<div class="cast-card">
+<h4 style="color:var(--c-doc)">박사 (Dr. Chibi)</h4>
+<p>이론과 시스템 평가 총괄. 데이터와 지표에 기반해 엄격하게 균형점을 판정합니다.</p>
+</div>
+<div class="cast-card">
+<h4 style="color:var(--c-asst)">조수 (Assistant)</h4>
+<p>실제 벤치마크 계측 및 장부 기록 담당. 시드를 고정하고 오차 없는 측정값을 발표합니다.</p>
+</div>
+<div class="cast-card">
+<h4 style="color:var(--c-fly)">초파리 연구원</h4>
+<p>가성비와 극단적 경량화 추구. 프론티어 만능주의를 의심하고 맞춤형 소형 모델을 선호합니다.</p>
+</div>
+<div class="cast-card">
+<h4 style="color:var(--c-robo)">Money-Robo</h4>
+<p>숫자와 수익, 스케일링 확신론자. 거대 모델의 압도적 파워와 시장 선점을 신봉합니다.</p>
+</div>
+</section>
+<!-- 큰 그림 -->
+<section id="overview" style="margin-bottom:3rem;">
+<h3 style="font-size:1.3rem; margin-bottom:1rem;">추론 엔지니어링의 3대 결정 기둥</h3>
+<div class="steps">
+<div class="step-card">
+<span class="idx">1</span>
+<h4>스케일 &amp; 배포 방식</h4>
+<p style="font-size:0.85rem; color:var(--muted)">토큰당 지불하는 <span class="jt" data-term="공유 추론">공유 추론</span>에서 시간당 GPU를 빌리는 <span class="jt" data-term="전용 배포">전용 배포</span>로의 전환 기준점을 결정합니다.</p>
+</div>
+<div class="step-card">
+<span class="idx">2</span>
+<h4>모델 선택 &amp; 도메인 특화</h4>
+<p style="font-size:0.85rem; color:var(--muted)">범용 초대형 모델 대신 파인튜닝과 <span class="jt" data-term="증류">증류</span>를 통해 가장 작고 다루기 쉬운 모델을 확정합니다.</p>
+</div>
+<div class="step-card">
+<span class="idx">3</span>
+<h4>지연시간 vs 처리량</h4>
+<p style="font-size:0.85rem; color:var(--muted)">대화형 온라인 서빙(<span class="jt" data-term="TTFT">TTFT</span>, TPS)과 오프라인 대량 배치 처리의 하드웨어 트레이드오프를 조율합니다.</p>
+</div>
+</div>
+</section>
+<!-- 사다리 1칸 -->
+<section class="level" id="lv1">
+<div class="lvhead">
+<div class="hexno">1</div>
+<h2>공유 추론 vs 전용 배포의 손익분기점</h2>
+<p class="sub"><span class="lvtag g">모델: Cost = min(Tokens × Rate, GPU_Hours × Wage)</span><span class="lvtag">장부로 보면: 건당 택배비 vs 월세 화물트럭</span></p>
+</div>
+<div class="pair">
+<div>
+<div class="tag fly">장부로 보면 (Cost Tradeoff)</div>
+<p>창업 초기 주문량이 적을 때는 배송 건당 3,000원씩 외주 택배를 쓰는 게 이득입니다. 하지만 하루 배송량이 수만 건으로 늘어나면 월세 트럭을 계약하고 기사를 고용하는 전용 배차가 훨씬 저렴해집니다.</p>
+</div>
+<div>
+<div class="tag nn">신경망 인프라에서는</div>
+<p>초기엔 토큰당 과금되는 퍼블릭 API(Shared Endpoint)가 엔지니어링 오버헤드 0으로 안전합니다. 그러나 트래픽이 커지면 GPU 인스턴스를 직접 대여해 올리는 전용 서빙이 토큰당 단가를 1/5 이하로 낮춥니다.</p>
+</div>
+</div>
+<!-- 본문 삽화 컷 (G판 cut_01_tradeoff.png 연동) -->
+<div class="cut-block">
+<img alt="공유 API와 전용 GPU 배포 사이의 비용 갈림길 삽화" data-img="cut_01_tradeoff" src="cut_01_tradeoff.png"/>
+<p class="caption">배포 방식 결정 컷: 토큰당 과금 API vs 시간당 전용 GPU의 단위 경제학 갈림길</p>
+</div>
+<section class="panel">
+<div class="cwrap"><canvas aria-label="공유 vs 전용 비용 그래프" height="260" id="c1"></canvas></div>
+<div class="ctrl">
+<div class="group">
+<span class="glabel">일일 토큰량:</span>
+<input id="c1Tokens" max="50" min="1" step="1" type="range" value="15"/>
+<span class="val" id="c1TokensVal">15M 토큰/일</span>
+</div>
+<div class="group">
+<span class="glabel">전용 GPU 구성:</span>
+<span class="val">A10G × 2대 ($2.5/hr)</span>
+</div>
+</div>
+<div class="insight" id="ins1">
+          현재 트래픽에선 <b>전용 배포</b>가 공유 API 대비 매월 약 <b>$420 절감</b>됩니다. 손익분기점을 돌파했습니다!
+        </div>
+</section>
+<div class="explain">
+<h4>초보자를 위한 장부 계산법</h4>
+<ol>
+<li><b>공유 추론의 장점:</b> 콜드 스타트 없음, 사용한 만큼만 지불, 초기 엔지니어링 리소스 절약.</li>
+<li><b>공유 추론의 한계:</b> 사용량과 비용이 1:1 선형으로 폭증하며, 이웃 노이즈(Noisy Neighbors)로 인해 지연시간 보장이 불가능함.</li>
+<li><b>전용 전환 3대 이유:</b> 규모(Scale), 특화 모델 운영(Specialization), 복합 모델 파이프라인(Orchestration).</li>
+</ol>
+</div>
+<div class="bridge field">
+<b>현장에 옮기면</b>
+        단순 프로토타입 단계에서 무리하게 자체 vLLM 클러스터를 구축하면 유휴 GPU 비용으로 월 수백만 원이 낭비됩니다. PMF(제품-시장 적합성) 달성 전에는 상용 API로 기동성을 확보하세요.
+        <span class="lim">비유의 한계: 전용 GPU는 서버 다운타임과 배포 유지보수 인건비가 추가로 발생합니다.</span>
+</div>
+<div class="say" data-who="fly">
+<img alt="" aria-hidden="true" class="who" data-img="fly_point" data-mood="point" data-who="fly" src="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 16 16'&gt;&lt;rect width='16' height='16' fill='%231d1a22'/&gt;&lt;rect x='4' y='4' width='8' height='8' fill='%23ef5b5b'/&gt;&lt;/svg&gt;"/>
+<div><b class="name">초파리 연구원</b><p>하루 1,000만 토큰도 안 나오는데 GPU 4장부터 덜컥 예약하는 건 투자 사기나 다름없어!</p></div>
+</div>
+<div class="quiz" data-quiz="lv1">
+<h4>확인 퀴즈 (사다리 1칸)</h4>
+<div class="quiz-q" data-ans="1">
+<p>Q1. 스타트업이 초기 단계에서 공유 추론(Shared Inference API)을 우선 선택하는 주된 이유는?</p>
+<div class="quiz-opt">
+<button class="quiz-btn" onclick="checkQ(this, 0)">A. 자체 파인튜닝 모델을 가장 쉽게 서빙할 수 있어서</button>
+<button class="quiz-btn" onclick="checkQ(this, 1)">B. 엔지니어링 오버헤드가 없고 사용량에 비례해서만 과금되므로</button>
+<button class="quiz-btn" onclick="checkQ(this, 2)">C. 서비스의 P99 지연시간을 완벽히 보장할 수 있어서</button>
+</div>
+<div class="quiz-fb"></div>
+</div>
+</div>
+</section>
+<!-- 사다리 2칸 -->
+<section class="level" id="lv2">
+<div class="lvhead">
+<div class="hexno">2</div>
+<h2>도메인 특화: 파인튜닝과 지능 증류</h2>
+<p class="sub"><span class="lvtag g">전략: 671B 범용 ➔ 3B 맞춤형 경량화</span><span class="lvtag">장부로 보면: 만능 박사 대신 전속 통역관</span></p>
+</div>
+<div class="pair">
+<div>
+<div class="tag fly">장부로 보면</div>
+<p>모든 언어와 인문학, 코딩을 다 아는 고연봉 수석 석학에게 사내 SQL 쿼리 작성만 시키는 것은 심각한 인건비 누수입니다. 기본 어학력만 갖춘 주니어에게 사내 DB 스키마만 집중 훈련시키는 편이 압도적으로 빠르고 쌉니다.</p>
+</div>
+<div>
+<div class="tag nn">신경망 인프라에서는</div>
+<p>수천억 파라미터의 프론티어 모델은 추론 비용과 메모리 대역폭을 과도하게 소모합니다. Text-to-SQL처럼 닫힌 도메인에서는 3B 소형 모델을 파인튜닝하거나 대형 교사 모델에서 증류(Distillation)하여 대등한 정확도를 얻습니다.</p>
+</div>
+</div>
+<section class="panel">
+<div class="cwrap"><canvas aria-label="모델 크기별 추론 비용 및 정확도 비교" height="240" id="c2"></canvas></div>
+<div class="ctrl">
+<div class="group">
+<button class="bt primary" id="btnBench">📊 도메인 SQL 벤치마크 실행</button>
+</div>
+<div class="group">
+<span class="glabel">테스트 데이터:</span>
+<span class="val">실제 비즈니스 질의 500건</span>
+</div>
+</div>
+<div class="insight" id="ins2">
+<b>테스트 완료:</b> 3B Fine-tuned 모델이 671B 프론티어 모델 대비 정확도 97.4% 수준을 유지하면서 추론 비용은 <b>92% 절감</b>했습니다!
+        </div>
+</section>
+<div class="explain">
+<h4>파인튜닝 vs 지능 증류(Distillation)의 핵심 차이</h4>
+<ol>
+<li><b>파인튜닝:</b> 모델의 아키텍처와 가중치 수는 유지한 채, 도메인 데이터셋으로 특정 도메인의 정답 가중치로 갱신함.</li>
+<li><b>증류(Distillation):</b> 대형 교사(Teacher) 모델의 내부 확률 분포(Logits) 자체를 작은 학생(Student) 모델에게 가르쳐 행동 양식을 전수함.</li>
+<li><b>굿하트의 법칙(Goodhart's Law):</b> MMLU 같은 범용 벤치마크 점수에 매몰되지 말고, 서비스 실제 태스크 기반의 자체 Evals를 구축해야 함.</li>
+</ol>
+</div>
+<div class="bridge gen">
+<b>생성 AI로 치면</b>
+        DeepSeek-R1(671B) 출시 직후 Llama-3 8B 기반으로 증류된 오픈 모델들이 오픈소스 생태계에서 폭발적 인기를 얻은 이유와 같습니다. 작아서 단일 GPU에서도 날아다니기 때문입니다.
+        <span class="lim">비유의 한계: 증류된 모델은 교사 모델이 가진 편향과 오답 생성 패턴까지 그대로 흡수할 위험이 있습니다.</span>
+</div>
+<div class="say" data-who="robo">
+<img alt="" aria-hidden="true" class="who" data-img="robo_coin" data-mood="coin" data-who="robo" src="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 16 16'&gt;&lt;rect width='16' height='16' fill='%231d1a22'/&gt;&lt;rect x='4' y='4' width='8' height='8' fill='%2357d0dc'/&gt;&lt;/svg&gt;"/>
+<div><b class="name">Money-Robo</b><p>그래도 671B 모델이 뿜어내는 수천억 토큰의 웅장함을 보면 투자의 피가 끓지 않나? 거대함이 곧 힘이다!</p></div>
+</div>
+<div class="quiz" data-quiz="lv2">
+<h4>확인 퀴즈 (사다리 2칸)</h4>
+<div class="quiz-q" data-ans="2">
+<p>Q2. 지능 증류(Distillation)가 단순 합성 데이터 학습과 결정적으로 다른 점은?</p>
+<div class="quiz-opt">
+<button class="quiz-btn" onclick="checkQ(this, 0)">A. 파라미터 크기가 교사 모델보다 커진다</button>
+<button class="quiz-btn" onclick="checkQ(this, 1)">B. 훈련 속도가 항상 100배 이상 빠르다</button>
+<button class="quiz-btn" onclick="checkQ(this, 2)">C. 최종 정답뿐 아니라 교사 모델의 실제 확률 분포 자체를 모방하도록 학습한다</button>
+</div>
+<div class="quiz-fb"></div>
+</div>
+</div>
+</section>
+<!-- 사다리 3칸 -->
+<section class="level" id="lv3">
+<div class="lvhead">
+<div class="hexno">3</div>
+<h2>지연시간 vs 처리량, 그리고 꼬리 지연(P99)</h2>
+<p class="sub"><span class="lvtag g">지표: TTFT, TPS, P50, P99</span><span class="lvtag">장부로 보면: 급행 개인 창구 vs 심야 대량 결제 배치</span></p>
+</div>
+<div class="pair">
+<div>
+<div class="tag fly">장부로 보면</div>
+<p>은행 창구에서 한 명의 VIP 고객을 위해 직원이 즉시 응답하는 '지연시간 최적화'와, 야간에 전산실에서 수백만 건의 이체 내역을 묶어서 한 번에 청산하는 '처리량 최적화'는 설계 철학이 완전히 다릅니다.</p>
+</div>
+<div>
+<div class="tag nn">신경망 인프라에서는</div>
+<p>챗봇은 첫 토큰이 뜨는 시간(<span class="jt" data-term="TTFT">TTFT</span>)과 초당 토큰(<span class="jt" data-term="TPS">TPS</span>)이 생명입니다. 반면 팟캐스트 전사나 문서 임베딩 같은 오프라인 작업은 개별 지연을 희생하고 배치 크기를 극대화해 GPU당 처리량을 최대화합니다.</p>
+</div>
+</div>
+<section class="panel">
+<div class="cwrap"><canvas aria-label="지연시간 및 P99 꼬리 분포 시뮬레이션" height="260" id="c3"></canvas></div>
+<div class="ctrl">
+<div class="group">
+<span class="glabel">동시 접속자 수:</span>
+<input id="c3Conc" max="64" min="1" step="1" type="range" value="16"/>
+<span class="val" id="c3ConcVal">16명</span>
+</div>
+<div class="group">
+<span class="glabel">서빙 모드:</span>
+<button class="bt primary" id="btnModeToggle">온라인 스트리밍 (Latency 우선)</button>
+</div>
+</div>
+<div class="insight" id="ins3">
+<b>지연시간 지표 분석:</b> Median(P50)은 <b>180ms</b>로 쾌적하지만, 큐잉 적체로 인해 <b>P99 꼬리 지연은 1,240ms</b>까지 치솟았습니다. 100명 중 1명은 서비스 먹통을 의심합니다!
+        </div>
+</section>
+<div class="explain">
+<h4>꼬리 지연(Right-skewed Distribution)을 봐야 하는 이유</h4>
+<ol>
+<li><b>평균의 함정:</b> LLM 응답 시간은 정규분포가 아니라 오른쪽으로 긴 꼬리를 갖습니다. 평균값만 보면 이상치(Outlier)의 고통이 가려집니다.</li>
+<li><b>P90 / P99 관리:</b> 10번 중 1번, 100번 중 1번 발생하는 병목 지연이 유저 신뢰를 무너뜨립니다.</li>
+<li><b>TTFT vs TPS 분리:</b> TTFT는 프롬프트를 한 번에 읽는 컴퓨팅 바운드(Prefill), TPS는 가중치를 메모리에서 계속 읽어오는 메모리 대역폭 바운드(Decode)입니다.</li>
+</ol>
+</div>
+<!-- 조수 장부 발표 스프라이트 (B판 asst_ledger.png 연동) -->
+<div class="say" data-who="asst">
+<img alt="장부를 들고 있는 조수" aria-hidden="true" class="who" data-img="asst_ledger" data-mood="ledger" data-who="asst" src="asst_ledger.png"/>
+<div><b class="name">조수</b><p>장부를 확인하니 배치 크기를 1에서 32로 올리면 총 토큰 생산량은 4.2배 늘지만, 개인 체감 지연은 3배 느려져요. 용도별로 서버를 쪼개야 해요!</p></div>
+</div>
+<div class="quiz" data-quiz="lv3">
+<h4>확인 퀴즈 (사다리 3칸)</h4>
+<div class="quiz-q" data-ans="1">
+<p>Q3. 대화형 LLM 챗봇 서비스에서 스트리밍 첫 글자가 뜨는 속도를 지배하는 단계와 지표는?</p>
+<div class="quiz-opt">
+<button class="quiz-btn" onclick="checkQ(this, 0)">A. 디코드(Decode) 단계의 TPS</button>
+<button class="quiz-btn" onclick="checkQ(this, 1)">B. 프리필(Prefill) 단계의 TTFT (Time to First Token)</button>
+<button class="quiz-btn" onclick="checkQ(this, 2)">C. 배치 청크 크기의 메모리 스와핑 속도</button>
+</div>
+<div class="quiz-fb"></div>
+</div>
+</div>
+</section>
+<!-- 끝장 대결 -->
+<section class="duel" id="duel">
+<div class="duel-head">
+<div style="text-align:left;">
+<h4 style="color:var(--c-fly); margin-top:0.3rem;">초파리 연구원</h4>
+<span style="font-size:0.8rem; color:var(--muted)">맞춤형 3B 파인튜닝 전용 서버</span>
+</div>
+<div>
+<h3>VS</h3>
+<p style="font-size:0.85rem; color:var(--muted)">일일 2,000만 토큰 B2B SQL 생성 서비스</p>
+</div>
+<div style="text-align:right;">
+<h4 style="color:var(--c-robo); margin-top:0.3rem;">Money-Robo</h4>
+<span style="font-size:0.8rem; color:var(--muted)">671B 초대형 프론티어 상용 API</span>
+</div>
+</div>
+<div class="duel-grid">
+<div class="duel-card fly">
+<b style="color:var(--c-fly)">초파리의 승부수:</b>
+<p style="font-size:0.85rem; margin-top:0.4rem;">"SQL 생성 도메인은 닫혀 있어. 3B 모델을 정밀하게 파인튜닝하고 전용 L4 GPU 2대에 띄우면 한 달 $780으로 초당 수십 건을 실시간(TTFT 80ms)으로 끝낸다!"</p>
+</div>
+<div class="duel-card robo">
+<b style="color:var(--c-robo)">Money-Robo의 승부수:</b>
+<p style="font-size:0.85rem; margin-top:0.4rem;">"지능은 파라미터에서 나온다! 671B 프론티어 API로 무조건 완벽한 쿼리를 보장해야 고객이 이탈 안 해! 토큰당 과금 따위 스케일로 밀어붙인다!"</p>
+</div>
+</div>
+<div style="text-align:center;">
+<button class="bt primary reveal" id="btnDuelRun" style="font-size:1rem; padding:0.6rem 2rem;">⚡ 대결 결과 시뮬레이션 계산</button>
+</div>
+<div class="bars" id="duelBars" style="display:none; margin-top:1.5rem;">
+<div class="bar-row">
+<div class="bar-lbl"><span>월간 인프라 지출 장부 (낮을수록 우수)</span><span id="costFlyVal" style="color:var(--c-fly); font-weight:700;">$780 / 월</span></div>
+<div class="bar-bg"><div class="bar-fill" id="barFly" style="background:var(--c-fly); width:20%;"></div></div>
+</div>
+<div class="bar-row">
+<div class="bar-lbl"><span>Money-Robo API 누적 청구액</span><span id="costRoboVal" style="color:var(--c-robo); font-weight:700;">$3,600 / 월</span></div>
+<div class="bar-bg"><div class="bar-fill" id="barRobo" style="background:var(--c-robo); width:95%;"></div></div>
+</div>
+</div>
+<div class="say asst" id="duelAsst" style="margin-top:1rem; display:none;">
+<img alt="" aria-hidden="true" class="who" data-img="asst_ledger" src="asst_ledger.png"/>
+<div><b class="name">조수</b><p>검증 결과, SQL 벤치마크 정확도는 98.2% 대 98.6%로 동등했으나, 월 지출은 초파리 쪽이 $780, Money-Robo 쪽이 $3,600으로 초파리가 압승했어요!</p></div>
+</div>
+<div class="verdict" id="duelVerdict">
+<b style="color:var(--c-doc)">박사의 최종 판정:</b>
+<p style="font-size:0.95rem; margin-top:0.3rem;">도메인 범위가 명확할 때 거대 모델을 맹신하는 것은 자원 낭비다. 제약 조건을 좁혀 비용과 지연시간을 모두 장악했다. <b>초파리 승!</b></p>
+</div>
+</section>
+<!-- 정리 및 아웃트로 (E판 sc_01_outro.png 연동) -->
+<section id="outro" style="margin: 3rem 0;">
+<h3 style="font-size:1.3rem; margin-bottom:1rem;">한눈에 보는 교과서 1장 정리</h3>
+<table style="width:100%; border-collapse:collapse; font-size:0.85rem; margin-bottom:1.5rem;">
+<thead>
+<tr style="background:var(--panel2); border-bottom:2px solid var(--rule);">
+<th style="padding:0.6rem; text-align:left;">구분</th>
+<th style="padding:0.6rem; text-align:left;">공유 추론 (Shared API)</th>
+<th style="padding:0.6rem; text-align:left;">전용 배포 (Dedicated GPU)</th>
+</tr>
+</thead>
+<tbody>
+<tr style="border-bottom:1px solid var(--rule);">
+<td style="padding:0.6rem; font-weight:700;">비용 구조</td>
+<td style="padding:0.6rem;">소비량(토큰) 비례 선형 증가</td>
+<td style="padding:0.6rem;">GPU 시간당 고정 임대료 바닥 형성</td>
+</tr>
+<tr style="border-bottom:1px solid var(--rule);">
+<td style="padding:0.6rem; font-weight:700;">엔지니어링 공수</td>
+<td style="padding:0.6rem;">API 키 하나로 즉시 연동 (Zero)</td>
+<td style="padding:0.6rem;">인프라 서빙 런타임, 오케스트레이션 필수</td>
+</tr>
+<tr style="border-bottom:1px solid var(--rule);">
+<td style="padding:0.6rem; font-weight:700;">지연시간 통제</td>
+<td style="padding:0.6rem;">제어 불가 (제공자 부하 및 Noisy Neighbors)</td>
+<td style="padding:0.6rem;">양자화, 배치, KV 캐시 최적화 직접 통제</td>
+</tr>
+</tbody>
+</table>
+<!-- 아웃트로 결산 일러스트 무대 -->
+<div class="outro-stage">
+<img alt="대결 결과 후 최종 결산을 진행하는 연구실 아웃트로 장면" data-img="sc_01_outro" src="sc_01_outro.png"/>
+<p class="caption">아웃트로 무대: 승리한 초파리 연구원과 손절을 외치며 다음 투자를 노리는 Money-Robo</p>
+</div>
+<div class="dialog-hero" style="border-left-color:var(--amber);">
+<p><b style="color:var(--c-doc)">박사:</b> "최적화는 하나를 끝까지 키우는 게 아니라, 우리 서비스의 제약 안에서 손익을 맞추는 엔지니어링 예술입니다."</p>
+<p><b style="color:var(--c-fly)">초파리:</b> "봐, 내 말 맞지? 무조건 큰 모델만 외치던 로봇 지갑이 아주 탈탈 털렸구만!"</p>
+<p><b style="color:var(--c-robo)">Money-Robo:</b> "크윽... 손절 인정한다! 하지만 다목적 에이전트 서비스 편에서는 거대 모델의 압도적 범용성으로 복수하겠다!"</p>
+<p><b style="color:var(--c-asst)">조수:</b> "양쪽 다 중요한 균형이에요. 아래 지식 색인과 꾸러미에서 오늘 정리된 개념과 서지 데이터를 확인하세요."</p>
+</div>
+</section>
+<!-- O1 지식 색인 -->
+<section class="kg-sec" id="kg">
+<h3>지식 색인 — 이 페이지에서 찾아보기</h3>
+<p style="font-size:0.85rem; color:var(--muted); margin-bottom:1rem;">교과서 1장에서 정립된 개념, 아키텍처 방법론, 지표 사이의 연결망입니다.</p>
+<input class="kg-search" id="kgSearch" placeholder="개념 검색 (예: 지연시간, 공유 추론, 증류, TTFT, P99)..." type="text"/>
+<div class="filter-chips">
+<span class="chip on" data-type="all">전체보기</span>
+<span class="chip" data-type="Method">방법 (Method)</span>
+<span class="chip" data-type="Concept">개념 (Concept)</span>
+<span class="chip" data-type="Metric">지표 (Metric)</span>
+<span class="chip" data-type="Claim">확인된 사실 (Claim)</span>
+</div>
+<div class="kg-list" id="kgList"></div>
+</section>
+<!-- O2 온톨로지·서지 꾸러미 -->
+<section class="export-sec" id="export">
+<h3>온톨로지·서지 꾸러미 — 이 페이지의 지식을 가져가기</h3>
+<p style="font-size:0.85rem; color:var(--muted);">이 페이지에 구축된 정밀 온톨로지와 참고문헌을 Zotero, Protégé, 엑셀, 지식 그래프 도구용 표준 포맷으로 내려받습니다.</p>
+<div style="background:var(--panel2); padding:1rem; border-radius:6px; margin:1rem 0; font-size:0.85rem;">
+<b>권장 인용 표기:</b><br/>
+<code>Inference Engineering Study Group (2026). Chapter 1: Prerequisites - Optimization, Tradeoffs, and Economics. AI Lab Explainer Dashboard 01.</code>
+</div>
+<div class="say" data-who="asst" style="margin:1rem 0;">
+<img alt="" aria-hidden="true" class="who" data-img="asst_ledger" src="asst_ledger.png"/>
+<div><b class="name">조수</b><p>출처가 확인되지 않은 임의 주장은 꾸러미에서 배제했어요. CSL-JSON 원본 기반으로 무결성이 검증된 서지 파일들입니다.</p></div>
+</div>
+<div class="export-btns">
+<button class="bt primary" id="btnZipExport">📦 온톨로지 전체 ZIP 내려받기</button>
+<button class="bt" onclick="downloadRaw('kg.json')">kg.json (중립 그래프)</button>
+<button class="bt" onclick="downloadRaw('kg.jsonld')">JSON-LD</button>
+<button class="bt" onclick="downloadRaw('references.bib')">BibTeX</button>
+<button class="bt" onclick="downloadRaw('references.csl.json')">CSL-JSON</button>
+</div>
+</section>
+</main>
+<footer>
+<div class="wrap" style="padding:0;">
+<p><b>출처 문헌 및 사실 명세</b></p>
+<table class="ref-tb">
+<thead>
+<tr><th>ID</th><th>문헌명 / 출처</th><th>역할</th><th>확인 상태</th></tr>
+</thead>
+<tbody>
+<tr><td>infeng-ch1</td><td>Inference Engineering, Chapter 1: Prerequisites (2026)</td><td>Primary (주 교재)</td><td>원문 대조 완료</td></tr>
+<tr><td>deepseek2025r1</td><td>DeepSeek-R1: Incentivizing Reasoning Capability in LLMs (2025)</td><td>Background (증류 사례)</td><td>발행 확인</td></tr>
+<tr><td>goodhart1975</td><td>Goodhart's Law: Problems of Monetary Management (1975)</td><td>Theory (평가 지표 한계)</td><td>문헌 확인</td></tr>
+</tbody>
+</table>
+<p style="margin-top:1.5rem; font-size:0.75rem; color:#6b6984;">모든 시뮬레이션 수치는 이해를 돕기 위한 교육용 모델 기반이며 실제 클라우드 환경 요금 및 GPU 벤더 정책에 따라 달라질 수 있습니다.</p>
+</div>
+</footer>
+<!-- 머신 러닝 지식 데이터 블록 -->
+<script id="kg-raw" type="application/json">
+  {
+    "version": "1.0",
+    "page": "01_inference_prerequisites",
+    "nodes": [
+      {
+        "id": "lab:concept/inference-optimization",
+        "type": "Concept",
+        "label": {"ko": "추론 최적화", "en": "Inference Optimization"},
+        "definition": {"ko": "지연시간, 처리량, 품질, 비용 간의 트레이드오프에서 최선의 균형점을 찾는 엔지니어링 과정."},
+        "page": "01_inference_prerequisites",
+        "anchor": "#overview",
+        "level": 1,
+        "family": "systems",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:method/shared-inference",
+        "type": "Method",
+        "label": {"ko": "공유 추론", "en": "Shared Inference"},
+        "definition": {"ko": "퍼블릭 API 엔드포인트를 통해 토큰 단위로 소비 비용을 지불하는 서빙 방식."},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv1",
+        "level": 1,
+        "family": "systems",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:method/dedicated-deployment",
+        "type": "Method",
+        "label": {"ko": "전용 배포", "en": "Dedicated Deployment"},
+        "definition": {"ko": "독립된 전용 GPU 인스턴스를 대여하거나 온프레미스로 구성해 독점 운영하는 서빙 방식."},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv1",
+        "level": 2,
+        "family": "systems",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:method/fine-tuning",
+        "type": "Method",
+        "label": {"ko": "도메인 파인튜닝", "en": "Domain Fine-tuning"},
+        "definition": {"ko": "사전 학습된 기초 모델의 구조를 유지한 채 특정 도메인 데이터로 가중치를 재조정하는 기법."},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv2",
+        "level": 2,
+        "family": "basics",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:method/distillation",
+        "type": "Method",
+        "label": {"ko": "지능 증류", "en": "Distillation"},
+        "definition": {"ko": "거대 교사 모델의 출력 확률 분포를 학습하여 소형 학생 모델이 그 행동을 모방하게 만드는 기법."},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv2",
+        "level": 3,
+        "family": "basics",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:metric/ttft",
+        "type": "Metric",
+        "label": {"ko": "첫 토큰 생성 시간", "en": "Time to First Token (TTFT)"},
+        "definition": {"ko": "사용자가 입력을 전송한 후 첫 번째 스트리밍 토큰이 반환될 때까지의 지연시간."},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv3",
+        "level": 1,
+        "family": "evaluation",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:metric/tps",
+        "type": "Metric",
+        "label": {"ko": "초당 토큰 수", "en": "Tokens Per Second (TPS)"},
+        "definition": {"ko": "첫 토큰 출력 후 토큰이 생성되는 속도(지연 지표) 또는 전체 서빙 클러스터의 총 토큰 생산량(처리량 지표)."},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv3",
+        "level": 1,
+        "family": "evaluation",
+        "anchorType": "C",
+        "status": "known",
+        "confidence": "high"
+      },
+      {
+        "id": "lab:claim/c01",
+        "type": "Claim",
+        "label": {"ko": "트래픽 규모 전환", "en": "Scale-driven Transition"},
+        "definition": {"ko": "트래픽이 충분히 커지면 토큰당 과금보다 전용 GPU 시간당 과금이 더 경제적이다."},
+        "page": "01_inference_prerequisites",
+        "anchor": "#lv1",
+        "confidence": "high",
+        "source": [{"cite": "infeng-ch1", "loc": "1.1"}]
+      }
+    ],
+    "edges": [
+      {"s": "lab:method/shared-inference", "p": "lab:contrastsWith", "o": "lab:method/dedicated-deployment", "anchor": "#lv1"},
+      {"s": "lab:method/shared-inference", "p": "lab:hasLimitation", "o": "lab:claim/c01", "anchor": "#lv1"},
+      {"s": "lab:method/fine-tuning", "p": "lab:prerequisiteOf", "o": "lab:method/distillation", "anchor": "#lv2"},
+      {"s": "lab:concept/inference-optimization", "p": "lab:evaluatedBy", "o": "lab:metric/ttft", "anchor": "#lv3"},
+      {"s": "lab:concept/inference-optimization", "p": "lab:evaluatedBy", "o": "lab:metric/tps", "anchor": "#lv3"}
+    ]
+  }
+  </script>
+<script id="kg-ld" type="application/ld+json">
+  {
+    "@context": {
+      "schema": "https://schema.org/",
+      "lab": "urn:lab:"
+    },
+    "@graph": [
+      {
+        "@type": "schema:LearningResource",
+        "schema:name": "추론 엔지니어링 기초 — 지연시간·처리량·단위 경제학의 최적 균형",
+        "schema:educationalLevel": "Intermediate",
+        "schema:learningResourceType": "interactive explainer"
+      }
+    ]
+  }
+  </script>
+<script id="refs-csl" type="application/json">
+  [
+    {
+      "id": "infeng-ch1",
+      "type": "chapter",
+      "title": "Prerequisites",
+      "container-title": "Inference Engineering: Speed and Scale for Generative AI",
+      "author": [{"family": "Author", "given": "Inference"}],
+      "issued": {"date-parts": [[2026]]},
+      "chapter": "1",
+      "lab": {
+        "role": "primary",
+        "supports": ["lab:concept/inference-optimization", "lab:claim/c01"],
+        "verified": {"title": true, "authors": true, "year": true, "venue": true, "doi": false, "pages": false}
+      }
+    },
+    {
+      "id": "deepseek2025r1",
+      "type": "article-journal",
+      "title": "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+      "author": [{"family": "DeepSeek-AI", "literal": "DeepSeek-AI et al."}],
+      "issued": {"date-parts": [[2025]]},
+      "lab": {
+        "role": "background",
+        "supports": ["lab:method/distillation"],
+        "verified": {"title": true, "authors": true, "year": true, "venue": true, "doi": false, "pages": false}
+      }
+    }
+  ]
+  </script>
+<script id="page-meta" type="application/json">
+  {
+    "title": "추론 엔지니어링 기초 — 지연시간·처리량·단위 경제학의 최적 균형",
+    "series": "AI Lab Explainer Dashboard",
+    "number": "01",
+    "date": "2026-10-25",
+    "version": "1.0",
+    "language": ["ko"],
+    "about": ["lab:concept/inference-optimization", "lab:method/shared-inference", "lab:method/dedicated-deployment"]
+  }
+  </script>
+<!-- 런타임 스크립트 -->
+<script>
+    /* 스크롤 진행률 */
+    window.addEventListener('scroll', function() {
+      var h = document.documentElement, b = document.body;
+      var st = 'scrollTop', sh = 'scrollHeight';
+      var percent = (h[st]||b[st]) / ((h[sh]||b[sh]) - h.clientHeight) * 100;
+      document.getElementById('prog').style.width = percent + '%';
+    });
+
+    /* 용어 툴팁 사전 */
+    var GLOSSARY = {
+      '공유 추론': '퍼블릭 API를 통해 요청한 토큰 수에 비례해서만 비용을 내는 방식. 초기 구축 비용이 0입니다.',
+      '전용 배포': 'GPU 하드웨어를 직접 빌려 독립된 인퍼런스 서버를 구축하는 방식. 대규모 트래픽에서 단가가 저렴합니다.',
+      '증류': '대형 교사 모델의 추론 확률 분포를 모방하도록 소형 모델을 훈련시켜 가볍고 빠르게 만드는 압축 기법.',
+      'TTFT': 'Time to First Token. 프롬프트를 전송한 후 첫 번째 토큰이 화면에 출력되기까지 걸리는 시간.',
+      'TPS': 'Tokens Per Second. 1초당 생성되는 토큰 수로, 지연시간이나 총 처리량을 측정하는 표준 지표.'
+    };
+
+    var tip = document.getElementById('tip');
+    document.querySelectorAll('.jt').forEach(function(el) {
+      el.addEventListener('mouseenter', function(e) {
+        var term = el.getAttribute('data-term') || el.textContent;
+        if(GLOSSARY[term]) {
+          tip.textContent = GLOSSARY[term];
+          tip.style.display = 'block';
+          tip.style.left = (e.clientX + 10) + 'px';
+          tip.style.top = (e.clientY + 10) + 'px';
+        }
+      });
+      el.addEventListener('mousemove', function(e) {
+        tip.style.left = (e.clientX + 10) + 'px';
+        tip.style.top = (e.clientY + 10) + 'px';
+      });
+      el.addEventListener('mouseleave', function() {
+        tip.style.display = 'none';
+      });
+    });
+
+    /* 퀴즈 채점 */
+    function checkQ(btn, choice) {
+      var q = btn.closest('.quiz-q');
+      var ans = parseInt(q.getAttribute('data-ans'), 10);
+      var fb = q.querySelector('.quiz-fb');
+      if (choice === ans) {
+        fb.className = 'quiz-fb ok';
+        fb.textContent = '정답입니다! 원문의 핵심 개념과 정확히 일치합니다.';
+      } else {
+        fb.className = 'quiz-fb no';
+        fb.textContent = '다시 생각해 보세요. 본문의 트레이드오프 설명을 참고하세요.';
+      }
+    }
+
+    /* 캔버스 1: 공유 vs 전용 비용 비교 */
+    var c1 = document.getElementById('c1');
+    var ctx1 = c1.getContext('2d');
+    var c1Range = document.getElementById('c1Tokens');
+    var c1Val = document.getElementById('c1TokensVal');
+    var ins1 = document.getElementById('ins1');
+
+    function drawC1() {
+      var w = c1.width = c1.clientWidth;
+      var h = c1.height = 260;
+      var tokensM = parseFloat(c1Range.value);
+      c1Val.textContent = tokensM + 'M 토큰/일';
+
+      ctx1.clearRect(0, 0, w, h);
+      ctx1.strokeStyle = 'rgba(157,155,184,0.1)';
+      ctx1.lineWidth = 1;
+      for(var i=1; i<5; i++) {
+        var y = h - (h/5)*i;
+        ctx1.beginPath(); ctx1.moveTo(40, y); ctx1.lineTo(w-20, y); ctx1.stroke();
+      }
+
+      ctx1.beginPath();
+      ctx1.strokeStyle = '#57d0dc'; ctx1.lineWidth = 2.5;
+      for(var x=0; x<=50; x++) {
+        var px = 40 + (x/50)*(w-60);
+        var cost = (x * 30) * 2.5;
+        var py = h - 30 - (cost/4500)*(h-60);
+        if(x===0) ctx1.moveTo(px, py); else ctx1.lineTo(px, py);
+      }
+      ctx1.stroke();
+
+      var dedicatedCost = 1800;
+      var dy = h - 30 - (dedicatedCost/4500)*(h-60);
+      ctx1.beginPath();
+      ctx1.strokeStyle = '#ef5b5b'; ctx1.lineWidth = 2.5; ctx1.setLineDash([5, 5]);
+      ctx1.moveTo(40, dy); ctx1.lineTo(w-20, dy); ctx1.stroke();
+      ctx1.setLineDash([]);
+
+      var curX = 40 + (tokensM/50)*(w-60);
+      var curSharedCost = (tokensM * 30) * 2.5;
+      var curSharedY = h - 30 - (curSharedCost/4500)*(h-60);
+
+      ctx1.fillStyle = '#f1b646';
+      ctx1.beginPath(); ctx1.arc(curX, curSharedY, 6, 0, Math.PI*2); ctx1.fill();
+
+      ctx1.font = '11px sans-serif';
+      ctx1.fillStyle = '#57d0dc'; ctx1.fillText('공유 API (토큰당 과금)', 50, 25);
+      ctx1.fillStyle = '#ef5b5b'; ctx1.fillText('전용 GPU 서빙 (월 고정 임대)', 200, 25);
+
+      if (curSharedCost > dedicatedCost) {
+        var diff = Math.round(curSharedCost - dedicatedCost);
+        ins1.innerHTML = '현재 트래픽(' + tokensM + 'M/일)에선 <b>전용 배포</b>가 공유 API 대비 매월 약 <b>$' + diff + ' 절감</b>됩니다. 손익분기점을 돌파했습니다!';
+      } else {
+        var diff = Math.round(dedicatedCost - curSharedCost);
+        ins1.innerHTML = '현재 트래픽(' + tokensM + 'M/일)에선 <b>공유 API</b>가 전용 GPU 대비 매월 약 <b>$' + diff + ' 저렴</b>합니다. 고정비 부담이 없습니다.';
+      }
+    }
+    c1Range.addEventListener('input', drawC1);
+    window.addEventListener('resize', drawC1);
+    drawC1();
+
+    /* 캔버스 2: 벤치마크 비교 막대 */
+    var c2 = document.getElementById('c2');
+    var ctx2 = c2.getContext('2d');
+    function drawC2() {
+      var w = c2.width = c2.clientWidth;
+      var h = c2.height = 240;
+      ctx2.clearRect(0,0,w,h);
+
+      var items = [
+        {name: '671B 프론티어 범용', acc: 98.6, cost: 100, color: '#57d0dc'},
+        {name: '8B 제로샷 베이스', acc: 68.2, cost: 12, color: '#9d9bb8'},
+        {name: '3B 전용 도메인 파인튜닝', acc: 97.4, cost: 8, color: '#5ee39c'}
+      ];
+
+      var barH = 32;
+      for(var i=0; i<items.length; i++) {
+        var y = 35 + i * 65;
+        ctx2.fillStyle = '#eceaf3';
+        ctx2.font = '13px sans-serif';
+        ctx2.fillText(items[i].name + ' (정확도: ' + items[i].acc + '%)', 40, y);
+
+        ctx2.fillStyle = 'rgba(255,255,255,0.05)';
+        ctx2.fillRect(40, y+8, w-140, barH);
+
+        var fillW = ((w-140) * (items[i].cost / 100));
+        ctx2.fillStyle = items[i].color;
+        ctx2.fillRect(40, y+8, fillW, barH);
+
+        ctx2.fillStyle = '#eceaf3';
+        ctx2.font = 'bold 12px sans-serif';
+        ctx2.fillText('비용 ' + items[i].cost + '%', 40 + fillW + 10, y+28);
+      }
+    }
+    document.getElementById('btnBench').addEventListener('click', drawC2);
+    drawC2();
+
+    /* 캔버스 3: P99 꼬리 지연 히스토그램 */
+    var c3 = document.getElementById('c3');
+    var ctx3 = c3.getContext('2d');
+    var c3Conc = document.getElementById('c3Conc');
+    var c3ConcVal = document.getElementById('c3ConcVal');
+
+    function drawC3() {
+      var w = c3.width = c3.clientWidth;
+      var h = c3.height = 260;
+      var conc = parseInt(c3Conc.value, 10);
+      c3ConcVal.textContent = conc + '명 동시 요청';
+
+      ctx3.clearRect(0, 0, w, h);
+      ctx3.beginPath();
+      ctx3.strokeStyle = '#82b8ff'; ctx3.lineWidth = 2.5;
+
+      ctx3.moveTo(30, h-30);
+      for(var x=30; x<w-30; x++) {
+        var t = (x-30)/(w-60) * 10;
+        var yVal = Math.pow(t, 2) * Math.exp(-t * (1.2 - conc*0.008));
+        var py = (h-30) - (yVal * (h*0.75));
+        ctx3.lineTo(x, Math.min(h-30, py));
+      }
+      ctx3.stroke();
+
+      var p50x = 30 + (w-60)*0.18;
+      var meanX = 30 + (w-60)*0.26;
+      var p99x = 30 + (w-60)*(0.65 + conc*0.004);
+
+      function vLine(x, color, label) {
+        ctx3.beginPath(); ctx3.strokeStyle = color; ctx3.setLineDash([4,4]);
+        ctx3.moveTo(x, 20); ctx3.lineTo(x, h-30); ctx3.stroke(); ctx3.setLineDash([]);
+        ctx3.fillStyle = color; ctx3.font = '11px sans-serif'; ctx3.fillText(label, x-15, 18);
+      }
+      vLine(p50x, '#5ee39c', 'P50');
+      vLine(meanX, '#f1b646', 'Mean');
+      vLine(p99x, '#f0604d', 'P99 꼬리 지연');
+    }
+    c3Conc.addEventListener('input', drawC3);
+    drawC3();
+
+    /* 대결 인터랙션 */
+    document.getElementById('btnDuelRun').addEventListener('click', function() {
+      var bars = document.getElementById('duelBars');
+      var asst = document.getElementById('duelAsst');
+      var duel = document.getElementById('duel');
+      bars.style.display = 'block';
+      asst.style.display = 'flex';
+      duel.classList.add('open');
+      this.textContent = '대결 재계산 완료 (초파리 승)';
+    });
+
+    /* 지식 색인 검색 및 필터 */
+    var kgData = JSON.parse(document.getElementById('kg-raw').textContent);
+    var kgListEl = document.getElementById('kgList');
+    var kgSearch = document.getElementById('kgSearch');
+    var curFilter = 'all';
+
+    function renderKg() {
+      var q = kgSearch.value.toLowerCase();
+      kgListEl.innerHTML = '';
+      kgData.nodes.forEach(function(n) {
+        if (curFilter !== 'all' && n.type !== curFilter) return;
+        var match = n.label.ko.toLowerCase().indexOf(q) !== -1 ||
+                    n.label.en.toLowerCase().indexOf(q) !== -1 ||
+                    n.definition.ko.toLowerCase().indexOf(q) !== -1;
+        if (!match) return;
+
+        var div = document.createElement('div');
+        div.className = 'kg-item';
+        div.innerHTML = '<div><b>' + n.label.ko + '</b> <span style="font-size:0.75rem; color:var(--muted);">' + n.label.en + '</span>' +
+                        '<p style="font-size:0.8rem; margin-top:0.2rem; color:var(--muted);">' + n.definition.ko + '</p></div>' +
+                        '<a href="' + n.anchor + '" style="color:var(--gfp); text-decoration:none; font-size:0.8rem; white-space:nowrap; margin-left:1rem;">이동 ➔</a>';
+        kgListEl.appendChild(div);
+      });
+    }
+
+    kgSearch.addEventListener('input', renderKg);
+    document.querySelectorAll('.filter-chips .chip').forEach(function(c) {
+      c.addEventListener('click', function() {
+        document.querySelectorAll('.filter-chips .chip').forEach(function(el){ el.classList.remove('on'); });
+        c.classList.add('on');
+        curFilter = c.getAttribute('data-type');
+        renderKg();
+      });
+    });
+    renderKg();
+
+    /* 순수 브라우저 ZIP 빌더 */
+    var CRC = (function(){
+      var t=[], c;
+      for(var n=0; n<256; n++){ c=n; for(var k=0; k<8; k++) c=c&1 ? 0xEDB88320^(c>>>1) : c>>>1; t[n]=c>>>0; }
+      return function(u8){ var x=0xFFFFFFFF; for(var i=0; i<u8.length; i++) x=t[(x^u8[i])&255]^(x>>>8); return (x^0xFFFFFFFF)>>>0; };
+    })();
+
+    function makeZip(files) {
+      var enc = new TextEncoder(), parts = [], central = [], off = 0;
+      function u16(v){ return [v&255, (v>>8)&255]; }
+      function u32(v){ return [v&255, (v>>8)&255, (v>>16)&255, (v>>>24)&255]; }
+
+      files.forEach(function(f) {
+        var name = enc.encode(f.name), data = enc.encode(f.text), crc = CRC(data);
+        var head = [].concat(u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0));
+        parts.push(new Uint8Array(head), name, data);
+        central.push([].concat(u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(off)), name);
+        off += head.length + name.length + data.length;
+      });
+      var cdStart = off, cdLen = 0;
+      central.forEach(function(c){ parts.push(new Uint8Array(c)); cdLen += c.length; });
+      parts.push(new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(cdLen), u32(cdStart), u16(0))));
+      return new Blob(parts, {type:'application/zip'});
+    }
+
+    document.getElementById('btnZipExport').addEventListener('click', function() {
+      var files = [
+        {name: 'kg.json', text: document.getElementById('kg-raw').textContent},
+        {name: 'kg.jsonld', text: document.getElementById('kg-ld').textContent},
+        {name: 'references.csl.json', text: document.getElementById('refs-csl').textContent},
+        {name: 'page_meta.json', text: document.getElementById('page-meta').textContent},
+        {name: 'README.txt', text: 'AI Lab Explainer Chapter 01 Inference Engineering Package\nIncludes image assets and ontology exports.\nGenerated on 2026-10-25.'}
+      ];
+      var blob = makeZip(files);
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'kg_01_inference_prerequisites.zip';
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    });
+
+    function downloadRaw(type) {
+      var content = '', name = type;
+      if (type === 'kg.json') content = document.getElementById('kg-raw').textContent;
+      if (type === 'kg.jsonld') content = document.getElementById('kg-ld').textContent;
+      if (type === 'references.csl.json') content = document.getElementById('refs-csl').textContent;
+      if (type === 'references.bib') content = '@chapter{infeng-ch1,\n  title = {Prerequisites},\n  booktitle = {Inference Engineering},\n  year = {2026}\n}';
+      
+      var blob = new Blob([content], {type: 'text/plain;charset=utf-8'});
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    }
+  </script>
+</body>
+</html>
